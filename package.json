@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "context-mode": "^1.0.169"
+  },
+  "allowScripts": {
+    "context-mode@1.0.169": true,
+    "better-sqlite3": true
+  }
+}
