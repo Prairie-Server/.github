@@ -2,5 +2,15 @@
   "$schema": "https://app.kilo.ai/config.json",
   "plugin": [
     "context-mode"
-  ]
+  ],
+  "mcp": {
+    "kilo-playwright": {
+      "enabled": false
+    },
+    "playwright": {
+      "type": "remote",
+      "url": "http://localhost:8931/mcp",
+      "enabled": true
+    }
+  }
 }
