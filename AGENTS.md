@@ -90,3 +90,23 @@ If search returns 0 results, proceed as a fresh session.
 | `ctx purge` | Call `purge` MCP tool with confirm: true. Warns before wiping knowledge base. |
 
 After /clear or /compact: knowledge base and session stats preserved. Use `ctx purge` to start fresh.
+
+## Engineering discipline — distilled from ponytail + RALPH
+
+### Code (ponytail)
+
+Laziest solution that actually works. Stop at the first rung that holds: (1) does this need to exist? speculative = skip, say so in one line (YAGNI) → (2) stdlib does it → (3) native platform feature covers it → (4) already-installed dependency solves it (never add a new one for a few lines) → (5) one line? one line → (6) minimum code that works.
+
+- No unrequested abstractions: no interface with one implementation, no factory for one product, no config for a constant. No boilerplate or scaffolding "for later".
+- Deletion over addition. Boring over clever. Fewest files, shortest working diff.
+- Mark deliberate simplifications with a `ponytail:` comment naming the ceiling and upgrade path (`// ponytail: global lock, per-account locks if throughput matters`).
+- Never simplify away: input validation at trust boundaries, error handling that prevents data loss, security, accessibility basics, anything explicitly requested.
+- Non-trivial logic (branch, loop, parser, security path) leaves ONE minimal runnable check. Trivial one-liners need no test — YAGNI applies to tests too.
+- Lazy is opt-in via the `ponytail` skill trigger ("ponytail", "yagni", "be lazy"); these permanent rules are the floor, not a license to under-deliver explicit requests.
+
+### Completion (RALPH)
+
+- Never claim done without verification: run the repo's build/test/lint entry points (see `prairie-workspace` skill) and report the result.
+- Fan out with bounded iterations and explicit completion criteria; one task per Agent Manager session/worktree. Never unbounded retry loops — always cap.
+- Unrelated bugs found while working on a task: record them, do not fix them mid-task.
+- When you learn new build/test/run commands for a repo, update `prairie-workspace`/AGENTS.md with the commands — commands only, no status prose.
