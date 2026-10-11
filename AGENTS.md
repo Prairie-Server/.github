@@ -6,6 +6,14 @@ context-mode MCP tools available. Rules protect context window from flooding. On
 
 Analyze/count/filter/compare/search/parse/transform data: **write code** via `context-mode_ctx_execute(language, code)`, `console.log()` only the answer. Do NOT read raw data into context. PROGRAM the analysis, not COMPUTE it. Pure JavaScript — Node.js built-ins only (`fs`, `path`, `child_process`). `try/catch`, handle `null`/`undefined`. One script replaces ten tool calls.
 
+## Model routing — MANDATORY (Claude Haiku 5.5, announced 2026-10-07)
+
+Use the cheapest model that reliably does the task; reserve large models for work that needs them. Source: https://www.anthropic.com/claude-haiku-5-5
+
+- **Haiku 5.5 (`claude-haiku-5-5`)** — default for high-volume, narrowly scoped, repetitive work: summaries, compaction, classification, database/query-style lookups, quick subagent tasks, speed-sensitive browser use. ~75% cheaper than Haiku 4.5; especially good value for prompts ≤100k tokens (~90% of requests). First Haiku-class model with adjustable effort (Low/Med/High/Xhigh/Max): use Low/Med for routine work, raise only when accuracy demands it.
+- **Sonnet 5.5 / Opus 5.5** — keep for complex agentic coding (multi-step repo work, Terminal-Bench-class tasks). Sonnet 5.5 cache reads are now halved ($0.10/M vs $0.20), making most agentic runs ~20% cheaper — structure work to maximize cache hits: stable instruction prefix, append-only context, never rewrite large unchanged blocks.
+- Never downgrade complex coding tasks to Haiku 5.5; never pay for Sonnet/Opus on trivial subtasks. Pair Haiku 5.5 as a subagent under Sonnet/Opus for coding work.
+
 ## BLOCKED — do NOT attempt
 
 ### curl / wget — BLOCKED
