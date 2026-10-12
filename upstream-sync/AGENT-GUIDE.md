@@ -103,7 +103,6 @@ that the test is stale. Don't edit `scripts/prairie-invariants.txt` to make it p
   12 minutes.
 - For CI failures, run `upstream-sync/ci-errors.sh prairie-<repo> <pr>`. It prints only the error
   lines of the failing jobs on the PR's current head. Don't read whole logs.
-  Don't read whole logs.
 
 ## Rules hygiene
 
