@@ -24,8 +24,10 @@ Subcommands:
   calibrate  how well the rules reproduce ours from the merge base
   merge      build B'/U', merge, and either commit (clean) or set up a
              worktree with a real in-progress merge for the conflicts
-  audit      after resolution: Prairie lines that vanished, and Silo tokens
-             that new upstream code brought in
+  render     PR body / conflicts issue / audit comment markdown from the JSON above
+  audit      after resolution: conflict markers, Prairie lines that vanished,
+             Silo tokens new upstream code brought in, and likely compile breaks
+             (names still used but declared nowhere; names declared twice)
 """
 import argparse
 import fnmatch
@@ -470,6 +472,147 @@ def cmd_merge(a):
     print(json.dumps(summary, indent=2))
 
 
+# --- symbol checks (catch compile breaks without a compiler) -------------------------------
+CODE_EXT = (".go", ".swift", ".kt", ".kts", ".ts", ".tsx")
+DECL_RE = {
+    ".go": [re.compile(r"^func (?:\([^)]*\) )?([A-Za-z_]\w*)", re.M),
+            re.compile(r"^type ([A-Za-z_]\w*)", re.M),
+            re.compile(r"^(?:const|var) ([A-Za-z_]\w*)", re.M)],
+    ".swift": [re.compile(r"\b(?:class|struct|enum|protocol|actor|typealias)\s+([A-Za-z_]\w*)"),
+               re.compile(r"\bfunc\s+([A-Za-z_]\w*)"),
+               re.compile(r"^\s*case\s+([a-z_]\w*)\b(?!\s*(?:=|let|var))", re.M),
+               re.compile(r"^ {0,8}(?:(?:public|private|internal|fileprivate|static|nonisolated|lazy|weak|override|final|@\w+(?:\([^)]*\))?)\s+)*(?:let|var)\s+([A-Za-z_]\w*)", re.M)],
+    ".kt": [re.compile(r"\b(?:class|interface|object|typealias)\s+([A-Za-z_]\w*)"),
+            re.compile(r"\bfun\s+(?:<[^>]*>\s*)?(?:[\w.<>?, ]+\.)?([A-Za-z_]\w*)\s*\("),
+            re.compile(r"^ {0,8}(?:(?:public|private|internal|protected|override|const|lateinit|open|@\w+)\s+)*(?:val|var)\s+([A-Za-z_]\w*)", re.M)],
+    ".ts": [re.compile(r"\bexport\s+(?:default\s+)?(?:declare\s+)?(?:async\s+)?(?:function\*?|class|interface|type|const|let|enum)\s+([A-Za-z_$][\w$]*)")],
+}
+DECL_RE[".kts"] = DECL_RE[".kt"]
+DECL_RE[".tsx"] = DECL_RE[".ts"]
+# Patterns for names that are visible beyond a function body: types and functions (and Go
+# top-level names). Stored properties and enum cases are left out: their regexes also match
+# locals, which would drown the report.
+SYMBOL_RE = {".go": DECL_RE[".go"], ".swift": DECL_RE[".swift"][:2], ".kt": DECL_RE[".kt"][:2],
+             ".kts": DECL_RE[".kt"][:2], ".ts": DECL_RE[".ts"], ".tsx": DECL_RE[".ts"]}
+# "Is this name declared anywhere?" -- deliberately loose: inline constructor params, locals, labels.
+LOOSE_RE = {e: rs + [re.compile(r"\b(?:let|var|val|const)\s+([A-Za-z_]\w*)"),
+                     re.compile(r"\bcase\s+([A-Za-z_]\w*)"),
+                     re.compile(r"\b(?:function|fun|func)\s+([A-Za-z_]\w*)"),
+                     # params, named args, struct/interface/object fields: `name: Type`
+                     re.compile(r"\b([A-Za-z_]\w*)\??\s*:\s*[A-Za-z_(\[{@'\"]"),
+                     re.compile(r"^\s+([A-Za-z_]\w*)\??\s*\(", re.M)]   # TS/Kotlin methods
+            for e, rs in DECL_RE.items()}
+LOOSE_RE[".go"] = LOOSE_RE[".go"] + [
+    re.compile(r"(?:^|[\s(,])([A-Za-z_]\w*)(?:\s*,\s*[A-Za-z_]\w*)*\s*:=", re.M),        # x := / x, y :=
+    re.compile(r",\s*([A-Za-z_]\w*)(?:\s*,\s*[A-Za-z_]\w*)*\s*:="),
+    re.compile(r"[(,]\s*([A-Za-z_]\w*)\s+(?:\.\.\.)?[*\[\]\w.]+\s*[,)]"),             # params
+    re.compile(r"^\s+([A-Za-z_]\w*)\s+[*\[\]\w.{}]+(?:\s+`[^`]*`)?\s*(?://.*)?$", re.M),  # struct fields
+    re.compile(r"\bfor\s+([A-Za-z_]\w*)(?:\s*,\s*[A-Za-z_]\w*)?\s*:?=\s*range"),
+    re.compile(r"^\s+([A-Za-z_]\w*):\s*$", re.M),                                       # labels
+    re.compile(r"^\s+([A-Za-z_]\w*)\s+(?:func|chan|map|interface|struct)\b", re.M),        # func-typed fields
+    re.compile(r"\b(?:const|var)\s+[\w\s,]*?,\s*([A-Za-z_]\w*)\s*(?:=|[A-Za-z*\[])")]       # const a, b ,
+    re.compile(r"^\s+([A-Za-z_]\w*)\s*(?:[\w.*\[\]]+\s*)?=[^=]", re.M)]                  # var ( x = ... ) in funcs
+WORD_RE = re.compile(r"[A-Za-z_]\w{3,}")
+STRIP_RE = re.compile(r"//.*|\"(?:\\.|[^\"\\])*\"|`[^`]*`")
+KEYWORDS = {"mutating", "nonmutating", "override", "async", "await", "throws", "rethrows", "inout",
+            "some", "self", "Self", "super", "init", "deinit", "where", "suspend", "inline", "operator",
+            "infix", "data", "sealed", "open", "internal", "public", "private", "protected", "readonly",
+            "static", "final", "lazy", "weak", "unowned", "convenience", "required", "dynamic", "func", "this"}
+COMMENT_RE = re.compile(r"^\s*(?://|\*|/\*|#)")
+
+
+def code_files(tm, skip):
+    return {p: o for p, (m, o) in tm.items() if p.endswith(CODE_EXT) and m != "160000" and not skip(p)}
+
+
+def declared(cat, files, table=None):
+    table = table or SYMBOL_RE
+    names = set()
+    for p, o in files.items():
+        txt = cat.get(o).decode(errors="replace")
+        for rx in table[os.path.splitext(p)[1]]:
+            names.update(rx.findall(txt))
+        if p.endswith(".go"):
+            for blk in GO_BLOCK_RE.findall(txt):
+                names.update(re.findall(r"^\t([A-Za-z_]\w*)\b", blk, re.M))
+    return names
+
+
+def dangling_symbols(cat, ours_t, up_t, res_t, skip, limit=60):
+    """Names declared at ours or upstream, declared nowhere in the result, still referenced
+    in the result's code. Each is a likely compile error: upstream renamed/removed something
+    Prairie code still calls, or a resolution dropped a definition."""
+    rf = code_files(res_t, skip)
+    # "Declared anywhere in the result" uses the loose table (members, cases, locals too), so a
+    # name only counts as gone when nothing at all declares it any more.
+    gone = (declared(cat, code_files(ours_t, skip)) | declared(cat, code_files(up_t, skip))) - declared(cat, rf, LOOSE_RE)
+    gone = {n for n in gone if len(n) >= 4 and n not in KEYWORDS}
+    hits = {}
+    for p, o in rf.items():
+        for i, line in enumerate(cat.get(o).decode(errors="replace").splitlines(), 1):
+            if COMMENT_RE.match(line):
+                continue
+            for w in set(WORD_RE.findall(STRIP_RE.sub("", line))) & gone:
+                hits.setdefault(w, []).append(f"{p}:{i}")
+    return {n: v[:5] for n, v in sorted(hits.items())[:limit]}
+
+
+GO_PKG_RE = re.compile(r"^package (\w+)", re.M)
+GO_TOP_RE = [re.compile(r"^func ([A-Za-z_]\w*)", re.M), re.compile(r"^type ([A-Za-z_]\w*)", re.M),
+             re.compile(r"^(?:const|var) ([A-Za-z_]\w*)", re.M)]
+GO_BLOCK_RE = re.compile(r"^(?:const|var) \((.*?)^\)", re.M | re.S)
+GO_CONSTRAINED_RE = re.compile(r"_(?:linux|darwin|windows|freebsd|openbsd|netbsd|unix|other|fallback|"
+                               r"amd64|arm64|386|arm|js|wasm|android|ios|plan9|solaris)(?:_test)?\.go$")
+MEMBER_RE = {".swift": DECL_RE[".swift"][3], ".kt": DECL_RE[".kt"][2], ".kts": DECL_RE[".kt"][2]}
+
+
+def duplicate_decls(cat, res_t, changed, skip):
+    """Same name declared twice where the language forbids it: Go top-level names within a
+    package, and Swift/Kotlin stored properties within one type body. Both sides of a merge
+    adding the same thing is the usual cause. Only packages/files the sync touched."""
+    out = {}
+    go_dirs = {os.path.dirname(p) for p in changed if p.endswith(".go")}
+    pkgs = {}
+    for p, o in code_files(res_t, skip).items():
+        if p.endswith(".go") and os.path.dirname(p) in go_dirs and not p.endswith("_gen.go"):
+            txt = cat.get(o).decode(errors="replace")
+            m = GO_PKG_RE.search(txt)
+            if not m:
+                continue
+            if GO_CONSTRAINED_RE.search(p) or re.search(r"^//go:build ", txt, re.M):
+                continue   # per-platform variants legitimately repeat names
+            names = [n for rx in GO_TOP_RE for n in rx.findall(txt)]
+            for blk in GO_BLOCK_RE.findall(txt):
+                names += re.findall(r"^\t([A-Za-z_]\w*)\b", blk, re.M)
+            for n in names:
+                if n not in ("init", "_", "main"):
+                    pkgs.setdefault((os.path.dirname(p), m.group(1), n), []).append(p)
+    for (d, pkg, n), ps in pkgs.items():
+        if len(ps) > 1:
+            out[f"{d} ({pkg}): {n}"] = sorted(ps)
+    for p in changed:
+        ext = os.path.splitext(p)[1]
+        if ext not in MEMBER_RE or p not in res_t or skip(p):
+            continue
+        depth, parens, seen = 0, 0, {}
+        for i, line in enumerate(cat.get(res_t[p][1]).decode(errors="replace").splitlines(), 1):
+            code = STRIP_RE.sub("", line)
+            in_params = parens > 0   # constructor/function parameters, not members
+            if re.match(r"\s*#(?:else|elseif)\b", line):
+                seen = {}   # Swift conditional compilation: each branch may declare the same name
+            m = MEMBER_RE[ext].match(line)
+            if m and depth == 1 and not in_params and not COMMENT_RE.match(line) and not re.search(r"\b(?:class|object|interface|struct)\b.*\(", line):
+                n = m.group(1)
+                if n in seen:
+                    out[f"{p}: {n}"] = [f"{p}:{seen[n]}", f"{p}:{i}"]
+                seen[n] = i
+            depth += code.count("{") - code.count("}")
+            parens = max(0, parens + code.count("(") - code.count(")"))
+            if depth <= 0:
+                depth, seen = 0, {}
+    return out
+
+
 def added_lines(a, b, path):
     """Non-trivial lines added going a->b in path."""
     out = git("diff", "-U0", "--no-renames", a, b, "--", path, check=False).stdout.decode(errors="replace")
@@ -494,7 +637,7 @@ def cmd_audit(a):
     report = {"lost_prairie_lines": {}, "markers": [], "silo_tokens": {}}
     # 1. Prairie customizations (ours vs rebrand(base)) that are gone from the result
     #    and that upstream did not itself remove.
-    custom = git("diff", "--name-only", "--no-renames", "--diff-filter=AM", bp, ours).stdout.decode().split()
+    custom = [x for x in git("diff", "-z", "--name-only", "--no-renames", "--diff-filter=AM", bp, ours).stdout.decode().split("\0") if x]
     for p in custom:
         if any(fnmatch.fnmatch(p, g) for g in rb.regen):
             continue   # generated; regenerated rather than merged
@@ -511,7 +654,7 @@ def cmd_audit(a):
     g = git("grep", "-l", "-E", "^(<<<<<<<|>>>>>>>) ", res, check=False).stdout.decode().split()
     report["markers"] = [x.split(":", 1)[1] for x in g]
     # 3. Silo tokens on lines the sync added (rules gaps).
-    for p in git("diff", "--name-only", "--no-renames", "--diff-filter=AM", ours, res).stdout.decode().split():
+    for p in [x for x in git("diff", "-z", "--name-only", "--no-renames", "--diff-filter=AM", ours, res).stdout.decode().split("\0") if x]:
         if rb.skipped(p):
             continue
         for l in added_lines(ours, res, p):
@@ -520,9 +663,97 @@ def cmd_audit(a):
             for t in re.findall(r"[\w.\-/:]*[Ss]ilo[\w.\-/:]*|[\w.\-/:]*SILO[\w.\-/:]*", l):
                 report["silo_tokens"].setdefault(t, []).append(p)
     report["silo_tokens"] = {t: sorted(set(ps))[:5] for t, ps in report["silo_tokens"].items()}
+    # 4./5. Compile breaks a grep can see: names that no longer exist but are still used,
+    #       and names now declared twice.
+    skip = lambda p: rb.skipped(p) or any(fnmatch.fnmatch(p, g) for g in rb.regen)
+    if not a.no_symbols:
+        report["dangling_symbols"] = dangling_symbols(cat, ot, tree_map(upp), rt, skip)
+        changed = [x for x in git("diff", "-z", "--name-only", "--no-renames", "--diff-filter=AM", ours, res).stdout.decode().split("\0") if x]
+        report["duplicate_decls"] = duplicate_decls(cat, rt, changed, skip)
     print(json.dumps(report, indent=2))
-    bad = bool(report["markers"]) or (a.strict and (report["lost_prairie_lines"] or report["silo_tokens"]))
+    bad = bool(report["markers"]) or (a.strict and any(report.get(k) for k in
+          ("lost_prairie_lines", "silo_tokens", "dangling_symbols", "duplicate_decls")))
     sys.exit(1 if bad else 0)
+
+
+AUDIT_MARK = "<!-- prairie-sync-audit -->"
+
+
+def cmd_render(a):
+    """Markdown for a PR body / issue body / audit comment, from merge or audit JSON."""
+    d = json.load(open(a.json))
+    up, repo = a.upstream_repo, a.repo
+    out = []
+    w = out.append
+    lst = lambda xs: "".join(f"\n- `{x}`" for x in xs)
+    if a.kind in ("pr", "issue"):
+        au = d.get("autoresolved", {})
+        stats = (f"{au.get('files_fully_resolved', 0)} files auto-resolved (hunks: theirs {au.get('theirs', 0)}, "
+                 f"ours {au.get('ours', 0)}, same {au.get('same', 0)}, superset {au.get('superset', 0)}, "
+                 f"import-union {au.get('import-union', 0)}; delete-over-noise {au.get('delete_wins_over_noise', 0)})")
+    if a.kind == "pr":
+        w(f"Rebrand-aware merge of `{up}` at `{d['upstream'][:10]}` ({d['upstream_commits']} upstream commits).\n")
+        w("**Land with \"Create a merge commit\". Never squash.** The second parent is the real upstream commit; "
+          "that is what keeps the next sync small.\n")
+        w(stats + ".")
+        if au.get("regen_taken_from_upstream"):
+            w("\n**Generated files taken from upstream** (the regen job rebuilds them on this branch):" + lst(au["regen_taken_from_upstream"]))
+        if au.get("upstream_deleted_prairie_modified"):
+            w("\n**Upstream deleted files Prairie had modified.** The delete was applied. Check that Prairie's change "
+              "isn't a feature that needs re-homing:" + lst(au["upstream_deleted_prairie_modified"]))
+        w("\nThe audit comment below lists likely compile breaks and lost Prairie lines. CI must be green, including "
+          "`Prairie invariants`; a failing test after a sync usually means Prairie code was lost, not that the test is stale.")
+    elif a.kind == "issue":
+        name = repo.split("/")[1]
+        w(f"Upstream `{up}` is {d['upstream_commits']} commits ahead (`{d['upstream'][:10]}`). {stats}, "
+          f"but **{len(d['conflicts'])} files still have real conflicts**.\n")
+        w("## Finish it\n")
+        w("```sh")
+        w("git clone --depth 1 https://github.com/Prairie-Server/.github prairie-dotgithub")
+        w(f"prairie-dotgithub/upstream-sync/sync.sh {name}      # clones/fetches, merges, leaves a worktree")
+        w(f"# resolve the files below in the worktree, then:")
+        w(f"prairie-dotgithub/upstream-sync/finish.sh           # commit, audit, push, open the PR")
+        w("```\n")
+        w("Follow `upstream-sync/AGENT-GUIDE.md` in Prairie-Server/.github. `sync.sh` also writes a resolution brief "
+          "and file batches for agents.\n")
+        w(f"## Conflicted files ({len(d['conflicts'])})\n" + lst(d["conflicts"]))
+        if au.get("upstream_deleted_prairie_modified"):
+            w("\n## Upstream deleted files Prairie had modified\n\nThe delete was applied; check for features to re-home." + lst(au["upstream_deleted_prairie_modified"]))
+    elif a.kind == "audit":
+        w(AUDIT_MARK)
+        w("## Upstream sync audit\n")
+        mk, dg, dp = d.get("markers", []), d.get("dangling_symbols", {}), d.get("duplicate_decls", {})
+        lost, toks = d.get("lost_prairie_lines", {}), d.get("silo_tokens", {})
+        w("| check | count |\n|---|---|")
+        w(f"| conflict markers | {'❌ ' if mk else ''}{len(mk)} |")
+        w(f"| likely compile breaks: names used but declared nowhere | {'⚠️ ' if dg else ''}{len(dg)} |")
+        w(f"| likely compile breaks: names declared twice | {'⚠️ ' if dp else ''}{len(dp)} |")
+        w(f"| files with Prairie lines no longer present | {len(lost)} |")
+        w(f"| Silo tokens added by the sync | {len(toks)} |\n")
+        if mk:
+            w("**Conflict markers**" + lst(mk))
+        if dg:
+            w("\n**Names still used but declared nowhere.** Upstream renamed/removed them, or a resolution dropped the "
+              "definition. Port the caller to upstream's replacement:\n")
+            for n, locs in dg.items():
+                w(f"- `{n}`: " + ", ".join(f"`{x}`" for x in locs[:3]))
+        if dp:
+            w("\n**Declared twice.** Usually both sides added the same thing; keep one:\n")
+            for n, locs in dp.items():
+                w(f"- `{n}`: " + ", ".join(f"`{x}`" for x in locs[:3]))
+        if lost:
+            w("\n**Prairie lines no longer present.** Each is either intended (upstream rewrote that code) or a lost "
+              "Prairie change:\n")
+            for p_, ls in list(lost.items())[:80]:
+                w(f"<details><summary><code>{p_}</code> ({len(ls)})</summary>\n\n```\n" + "\n".join(ls) + "\n```\n</details>")
+        if toks:
+            w("\n**Silo tokens added by this sync.** Rebrand them, or add them to the rules' `protect_tokens` if intentional:\n")
+            for t, ps in list(toks.items())[:100]:
+                w(f"- `{t}`: " + ", ".join(f"`{x}`" for x in ps))
+    body = "\n".join(out)
+    if len(body) > 60000:   # GitHub caps bodies at 65536 chars
+        body = body[:60000] + "\n\n…truncated; run `audit` locally for the full report."
+    print(body)
 
 
 def main():
@@ -546,9 +777,16 @@ def main():
     au = sub.add_parser("audit")
     au.add_argument("--result", default="HEAD")
     au.add_argument("--max-lines", type=int, default=20)
-    au.add_argument("--strict", action="store_true")
+    au.add_argument("--strict", action="store_true", help="also fail on lost lines, Silo tokens, dangling or duplicate symbols")
+    au.add_argument("--no-symbols", action="store_true", help="skip the dangling/duplicate symbol checks")
+    r = sub.add_parser("render", help="markdown for a PR body, conflicts issue or audit comment")
+    r.add_argument("kind", choices=["pr", "issue", "audit"])
+    r.add_argument("json", help="merge or audit JSON output")
+    r.add_argument("--repo", default="Prairie-Server/<repo>")
+    r.add_argument("--upstream-repo", default="Silo-Server/<repo>")
     a = ap.parse_args()
-    {"calibrate": cmd_calibrate, "learn": cmd_learn, "merge": cmd_merge, "audit": cmd_audit}[a.cmd](a)
+    {"calibrate": cmd_calibrate, "learn": cmd_learn, "merge": cmd_merge, "audit": cmd_audit,
+     "render": cmd_render}[a.cmd](a)
 
 
 if __name__ == "__main__":

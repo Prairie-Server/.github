@@ -1,6 +1,7 @@
-# Reusable post-resolution audit for upstream sync PRs (head branch sync/*).
-# Fails on leftover conflict markers. Writes the Prairie lines that disappeared and the
-# Silo tokens that new upstream code brought in to the job summary for the reviewer.
+# Reusable audit for upstream sync PRs (head branch sync/*), as a status check on the fork's
+# PR. It fails on leftover conflict markers and writes the full audit (likely compile breaks,
+# lost Prairie lines, new Silo tokens) to the job summary. upstream-sync-all.yml also posts the
+# same audit as a PR comment every few hours; this gives it to you on every push instead.
 name: upstream-sync-audit
 
 on:
@@ -9,12 +10,6 @@ on:
       upstream:
         type: string
         required: true
-      rules:
-        type: string
-        default: ""
-      go-version:
-        type: string
-        default: "stable"
       tool-ref:
         type: string
         default: main
@@ -40,38 +35,18 @@ jobs:
           sparse-checkout: upstream-sync
       - uses: actions/setup-go@v5
         with:
-          go-version: ${{ inputs.go-version }}
+          go-version: stable
           cache: false
       - name: Audit
         run: |
           set -uo pipefail
+          source .prairie-sync-tool/upstream-sync/common.sh
           git remote add upstream "https://github.com/${{ inputs.upstream }}.git"
           git fetch --quiet upstream
-          up_head=$(git symbolic-ref --short refs/remotes/upstream/HEAD 2>/dev/null || echo upstream/main)
-          # The upstream commit this PR merged = newest upstream commit in its ancestry.
-          merged_up=$(git merge-base HEAD "$up_head")
-          rules="${{ inputs.rules }}"
-          if [ -z "$rules" ]; then
-            rules="${GITHUB_REPOSITORY#*/}"; rules="${rules#prairie-}.json"
-            [ -f ".prairie-sync-tool/upstream-sync/rules/$rules" ] || rules=default.json
-          fi
-          python3 .prairie-sync-tool/upstream-sync/prairie_sync.py \
-            --rules ".prairie-sync-tool/upstream-sync/rules/$rules" \
-            --ours "origin/${{ github.base_ref }}" --upstream "$merged_up" \
+          merged_up=$(git merge-base HEAD "$(upstream_head)")
+          rules=$(rules_for "${GITHUB_REPOSITORY#*/}")
+          python3 "$SYNC_PY" --rules "$rules" --ours "origin/${{ github.base_ref }}" --upstream "$merged_up" \
             audit --result HEAD > "$RUNNER_TEMP/audit.json"
           rc=$?
-          python3 - "$RUNNER_TEMP/audit.json" >> "$GITHUB_STEP_SUMMARY" <<'PY'
-          import json, sys
-          d = json.load(open(sys.argv[1]))
-          print("## Upstream sync audit\n")
-          print(f"**Conflict markers:** {len(d['markers'])} file(s)" + "".join(f"\n- `{m}`" for m in d["markers"]))
-          lost = d["lost_prairie_lines"]
-          print(f"\n**Prairie lines no longer present:** {len(lost)} file(s). Check each one: was it intended (upstream rewrote the code) or a lost Prairie change?\n")
-          for p, ls in list(lost.items())[:80]:
-              print(f"<details><summary><code>{p}</code> ({len(ls)})</summary>\n\n```\n" + "\n".join(ls) + "\n```\n</details>")
-          toks = d["silo_tokens"]
-          print(f"\n**Silo tokens added by this sync:** {len(toks)} (rules gaps; rebrand them, or add to protect_tokens if intentional)\n")
-          for t, ps in list(toks.items())[:100]:
-              print(f"- `{t}`: " + ", ".join(f"`{p}`" for p in ps))
-          PY
+          python3 "$SYNC_PY" render audit "$RUNNER_TEMP/audit.json" >> "$GITHUB_STEP_SUMMARY"
           exit $rc

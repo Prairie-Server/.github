@@ -115,6 +115,8 @@ Laziest solution that actually works. Stop at the first rung that holds: (1) doe
 
 Any "sync with upstream", "update from Silo" or "get prairie-X up to date" task follows
 `upstream-sync/AGENT-GUIDE.md` in this repo. Short version: never hand-merge, never merge a
-rebranded copy of upstream, never resolve whole files to one side, never squash. Run
-`upstream-sync/prairie_sync.py merge --worktree …`, resolve only the conflicts it leaves, run its
-`audit`, and land with a merge commit. A daily Action opens the PR or a conflicts issue for you.
+rebranded copy of upstream, never resolve whole files to one side, never squash. Check first
+for the daily automation's open sync PR or "Upstream sync needs conflict resolution" issue. Then
+`upstream-sync/sync.sh prairie-<repo>`, resolve only the conflicts it leaves (brief + batches
+provided), and `upstream-sync/finish.sh <worktree>` (commit, audit incl. compile-break checks,
+push, PR). Land with a merge commit.

@@ -44,5 +44,8 @@
   "regen": [
     "go.sum"
   ],
-  "drop": []
+  "drop": [],
+  "regen_cmds": [
+    "[ ! -f go.mod ] || go mod tidy"
+  ]
 }

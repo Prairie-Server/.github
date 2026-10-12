@@ -3,8 +3,8 @@
   "protect": [
     "Silo Media,? L\\.?L\\.?C\\.?",
     "x-silo-[a-z][a-z0-9-]*",
-    "silo_[a-z][a-z0-9_]*",
-    "secure\\.silo"
+    "secure\\.silo",
+    "silo_(notification|notifications|player_settings|diagnostics)[a-z0-9_]*"
   ],
   "content": [
     [

@@ -45,5 +45,10 @@
     "*.pb.go",
     "go.sum"
   ],
-  "drop": []
+  "drop": [],
+  "regen_cmds": [
+    "command -v protoc >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq protobuf-compiler)",
+    "make proto",
+    "go mod tidy"
+  ]
 }

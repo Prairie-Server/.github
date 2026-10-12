@@ -22,74 +22,87 @@ four ways:
 
 ## The procedure
 
-The tool lives in this repo (`upstream-sync/prairie_sync.py`, rules in `upstream-sync/rules/`).
-It rebrands the merge-base and upstream with the repo's rules, does the 3-way merge against
-Prairie `main`, and auto-resolves every hunk where one side only changed brand words,
-whitespace, formatting or imports. What's left is real overlap, usually 5–10% of the
-naive conflict count.
-
-A scheduled GitHub Action (`upstream-sync.yml`) already runs this every day. If the merge is
-clean it opens a PR. If not, it opens an issue titled **"Upstream sync needs conflict
-resolution"** listing the files. Start from that issue. Locally:
+Don't improvise the merge. Three scripts in this repo do the mechanical work; your job is only
+the real conflicts they leave.
 
 ```sh
-git clone https://github.com/Prairie-Server/<repo> && cd <repo>
-git remote add upstream https://github.com/Silo-Server/<silo-repo> && git fetch upstream
-git clone --depth 1 https://github.com/Prairie-Server/.github ../prairie-dotgithub
-T=../prairie-dotgithub/upstream-sync
-# prints JSON: conflicts, autoresolved stats, upstream_deleted_prairie_modified
-python3 $T/prairie_sync.py --rules $T/rules/<rules>.json \
-  merge --branch sync/upstream-$(date +%F) --worktree ../<repo>-sync \
-  --trailer "Co-Authored-By: <your model attribution>"
-cd ../<repo>-sync      # merge in progress; MERGE_HEAD = the real upstream commit
+git clone --depth 1 https://github.com/Prairie-Server/.github prairie-dotgithub
+T=prairie-dotgithub/upstream-sync
+export SYNC_TRAILER="Co-Authored-By: <your model attribution>"   # optional
+
+$T/sync.sh prairie-<repo>          # clone/fetch, rebrand-aware merge, worktree, brief, batches
+# ... resolve the files listed in the batches (see below) ...
+$T/finish.sh ~/prairie-sync/prairie-<repo>-sync   # commit, audit, invariants, push, PR, audit comment
 ```
 
-Rules file: `server.json`, `android.json`, `apple.json`, `plugin-sdk.json` and `plugins.json`
-are tuned. Use `default.json` for the plugin, theme and push-relay repos. If the tool needs
-gofmt, put Go on PATH.
+**Before you start, check for automation output.** `upstream-sync-all.yml` runs every day for
+every fork. A clean merge already arrives as a PR (`sync/upstream-auto`). Conflicts arrive as an
+issue, **"Upstream sync needs conflict resolution"**, listing the files. Start from that issue,
+and don't open a second sync PR while one is open.
+
+### What `sync.sh` gives you
+
+- `~/prairie-sync/prairie-<repo>-sync`: a worktree with an in-progress merge. `MERGE_HEAD` is the
+  **real** upstream commit, so `finish.sh` (a plain `git commit`) records both parents.
+- `~/prairie-sync/prairie-<repo>-merge.json`: stats, the conflict list,
+  `upstream_deleted_prairie_modified`, and the generated files taken from upstream.
+- `~/prairie-sync/prairie-<repo>-RESOLVE-BRIEF.md` and `prairie-<repo>-batches/NN.txt`: a
+  self-contained brief and file batches of about 50. Hand one batch plus the brief to each
+  sub-agent; they edit and `git add` only their files.
+
+The tool rebrands the merge-base and upstream with the repo's rules, merges against Prairie
+`main`, and auto-resolves every hunk where one side only changed brand words, whitespace,
+formatting or imports. What's left is real overlap, usually 5–10% of the naive conflict count.
 
 ### Resolve the remaining hunks
 
-Hunks are in diff3 style: `<<<<<<< origin/main` (Prairie) / `||||||| refs/prairie-sync/base`
+Hunks are diff3 style: `<<<<<<< origin/main` (Prairie) / `||||||| refs/prairie-sync/base`
 (rebranded merge-base) / `=======` / `>>>>>>> refs/prairie-sync/upstream` (rebranded upstream).
 
-- See what each side meant with `git diff refs/prairie-sync/base origin/main -- <f>` (Prairie)
-  and `git diff refs/prairie-sync/base refs/prairie-sync/upstream -- <f>` (upstream).
-- **Keep both intents.** Take upstream's new structure and re-apply Prairie's change on top.
-  If upstream renamed an API that Prairie code calls, port the Prairie code.
-- Never resolve a whole file to one side unless you've confirmed the other side's hunk is
-  cosmetic.
-- Generated files listed under `regen_taken_from_upstream` (route-inventory, schema.ts,
-  lockfiles, `.pb.go`, go.sum) were taken from upstream. **Regenerate them**; don't hand-merge.
-- `upstream_deleted_prairie_modified`: upstream removed or moved these files, and the delete
-  was applied. Check Prairie's diff. If it was a feature, re-home it in upstream's
-  replacement.
-- Remove every marker, then `git add`. Commit with plain `git commit`, which records both
-  parents. Do **not** rebase, cherry-pick or squash the merge.
+- See what each side meant: `git diff refs/prairie-sync/base origin/main -- <f>` (Prairie) and
+  `git diff refs/prairie-sync/base refs/prairie-sync/upstream -- <f>` (upstream).
+- **Keep both intents.** Take upstream's new structure and re-apply Prairie's change on top. If
+  upstream renamed or removed an API Prairie code calls, port the Prairie code.
+- If both sides added the same field, function or constant, keep **one**.
+- Never resolve a whole file to one side unless the other side's hunk is cosmetic.
+- Generated files (`regen` in the rules) were taken from upstream. The automation regenerates
+  them on the PR branch (rules' `regen_cmds`). Don't hand-merge them.
+- `upstream_deleted_prairie_modified`: upstream removed or moved these files and the delete was
+  applied. Check Prairie's diff; if it was a feature, re-home it in upstream's replacement.
+- Don't rebase, cherry-pick or squash the merge.
 
-### Verify, then push
+### Verify, then push: `finish.sh`
 
-```sh
-python3 $T/prairie_sync.py --rules $T/rules/<rules>.json --ours origin/main \
-  --upstream "$(git rev-parse MERGE_HEAD 2>/dev/null || git rev-parse HEAD^2)" audit
-bash scripts/check-prairie-invariants.sh   # where the repo has it
-```
+`finish.sh` refuses to continue while files are unmerged or markers remain. It then commits the
+merge and runs `audit` and the repo's `scripts/check-prairie-invariants.sh`. The audit reports:
 
-`audit` fails if any conflict markers remain. It also lists **Prairie lines that vanished**
-(each one is either intended or a lost feature, so check them) and **Silo tokens the sync
-introduced** (rebrand them).
+| check | meaning |
+|---|---|
+| conflict markers | must be zero |
+| **used but declared nowhere** | a type/function that existed at Prairie main or upstream is gone, but the result still calls it. Almost always a compile error: port the caller to upstream's replacement. |
+| **declared twice** | both sides added the same Go top-level name or Swift/Kotlin stored property. Keep one. |
+| lost Prairie lines | Prairie customizations no longer present. Each is intended (upstream rewrote that code) or a lost feature; check them. |
+| new Silo tokens | rebrand them, or add them to `protect_tokens` if deliberate |
 
-Push the branch, open a PR, and wait for CI. **Rebrand fallout** (new upstream tests asserting
-"Silo", `Silo/` user agents, `X-Silo-*` headers) goes in follow-up commits on the same branch.
-Land it with **"Create a merge commit"**. A failing test after a sync usually means Prairie
-code was lost, not that the test is stale. Don't edit `scripts/prairie-invariants.txt` to make
-it pass.
+The two compile-break checks stop the push unless `--force`. They're grep-level, with no
+compiler. They catch what took several CI rounds in past syncs (duplicate fields from both sides,
+removed design-system types, helpers renamed on one side only), but they won't catch everything.
+Then `finish.sh` pushes, opens the PR and posts the audit as a sticky comment.
+
+After that, CI is the build gate. **Rebrand fallout** goes in follow-up commits on the same
+branch: new upstream tests asserting "Silo", `Silo/` user agents, `X-Silo-*` headers. Land with
+**"Create a merge commit"**. A failing test after a sync usually means Prairie code was lost, not
+that the test is stale. Don't edit `scripts/prairie-invariants.txt` to make it pass.
 
 ### Budget
 
-Don't build the big projects locally. prairie-server's Go compile has OOM-crashed a 7 GB
-host, and Android and Apple builds need their own toolchains. Let CI build. Locally, run
-targeted checks only: gofmt, the invariants grep, single-package tests.
+- Don't build the big projects locally. prairie-server's Go compile has OOM-crashed a 7 GB host,
+  and the Android and Apple builds need their own toolchains. Let CI build. Locally, run only
+  targeted checks: gofmt, invariants, `finish.sh --no-push`, single-package tests.
+- Fix all audit findings in one pass before pushing. Each CI round on prairie-apple costs about
+  12 minutes.
+- For CI logs, use `gh api repos/Prairie-Server/<repo>/actions/jobs/<job-id>/logs | grep -E 'error|FAIL'`.
+  Don't read whole logs.
 
 ## Rules hygiene
 
@@ -101,6 +114,9 @@ by hand. To check a rules change:
 python3 prairie_sync.py --rules rules/<repo>.json calibrate   # files where rebrand(base) != Prairie main
 python3 prairie_sync.py --rules rules/<repo>.json learn       # per-token kept/renamed stats → protect_tokens
 ```
+
+Rules files also carry `regen_cmds`, the shell commands the automation runs on a sync PR branch
+to rebuild generated files. Keep them in step with the repo's Makefile.
 
 `protect_tokens` holds Silo names Prairie deliberately kept: DB columns, persisted keys,
 `x-silo-*` OpenAPI extensions, local identifiers the fork never renamed. A token in this list

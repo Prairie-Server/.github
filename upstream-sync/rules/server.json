@@ -158,5 +158,12 @@
     "web/src/api/v2/schema.ts",
     "web/pnpm-lock.yaml",
     "go.sum"
+  ],
+  "regen_cmds": [
+    "go mod tidy",
+    "make route-inventory",
+    "make apiv2-openapi",
+    "make apiv2-fixtures",
+    "cd web && pnpm install --no-frozen-lockfile && pnpm run generate:apiv2"
   ]
 }

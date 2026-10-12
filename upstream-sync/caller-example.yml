@@ -1,29 +1,30 @@
-# Copy to .github/workflows/upstream-sync.yml in a prairie-* fork and set `upstream`.
+# Optional. upstream-sync-all.yml in Prairie-Server/.github already syncs every Prairie-Server
+# fork centrally. Add this file to a fork as .github/workflows/upstream-sync.yml only if you
+# want (a) the audit as a status check on every push to a sync PR, or (b) the fork to sync on
+# its own schedule. Set `upstream` to the fork's Silo parent.
 name: Upstream sync
 
 on:
-  schedule:
-    - cron: "17 9 * * *"
-  workflow_dispatch:
   pull_request:
     branches: [main]
+  # schedule:
+  #   - cron: "17 9 * * *"
+  # workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
-  issues: write
+  contents: read
 
 jobs:
-  sync:
-    if: github.event_name != 'pull_request'
-    uses: Prairie-Server/.github/.github/workflows/upstream-sync.yml@main
-    with:
-      upstream: Silo-Server/silo-server
-    secrets:
-      SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
-
   audit:
     if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'sync/')
     uses: Prairie-Server/.github/.github/workflows/upstream-sync-audit.yml@main
     with:
       upstream: Silo-Server/silo-server
+
+  # sync:
+  #   if: github.event_name != 'pull_request'
+  #   uses: Prairie-Server/.github/.github/workflows/upstream-sync.yml@main
+  #   with:
+  #     upstream: Silo-Server/silo-server
+  #   secrets:
+  #     SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
