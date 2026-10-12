@@ -510,7 +510,7 @@ LOOSE_RE[".go"] = LOOSE_RE[".go"] + [
     re.compile(r"\bfor\s+([A-Za-z_]\w*)(?:\s*,\s*[A-Za-z_]\w*)?\s*:?=\s*range"),
     re.compile(r"^\s+([A-Za-z_]\w*):\s*$", re.M),                                       # labels
     re.compile(r"^\s+([A-Za-z_]\w*)\s+(?:func|chan|map|interface|struct)\b", re.M),        # func-typed fields
-    re.compile(r"\b(?:const|var)\s+[\w\s,]*?,\s*([A-Za-z_]\w*)\s*(?:=|[A-Za-z*\[])")]       # const a, b ,
+    re.compile(r"\b(?:const|var)\s+[\w\s,]*?,\s*([A-Za-z_]\w*)\s*(?:=|[A-Za-z*\[])"),     # const a, b =
     re.compile(r"^\s+([A-Za-z_]\w*)\s*(?:[\w.*\[\]]+\s*)?=[^=]", re.M)]                  # var ( x = ... ) in funcs
 WORD_RE = re.compile(r"[A-Za-z_]\w{3,}")
 STRIP_RE = re.compile(r"//.*|\"(?:\\.|[^\"\\])*\"|`[^`]*`")
