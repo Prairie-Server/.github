@@ -101,7 +101,8 @@ that the test is stale. Don't edit `scripts/prairie-invariants.txt` to make it p
   targeted checks: gofmt, invariants, `finish.sh --no-push`, single-package tests.
 - Fix all audit findings in one pass before pushing. Each CI round on prairie-apple costs about
   12 minutes.
-- For CI logs, use `gh api repos/Prairie-Server/<repo>/actions/jobs/<job-id>/logs | grep -E 'error|FAIL'`.
+- For CI failures, run `upstream-sync/ci-errors.sh prairie-<repo> <pr>`. It prints only the error
+  lines of the failing jobs on the PR's current head. Don't read whole logs.
   Don't read whole logs.
 
 ## Rules hygiene

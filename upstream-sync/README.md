@@ -9,6 +9,7 @@ upstream, without hand-merging thousands of rebranded files.
 | `rules/<repo>.json` | per-repo rebrand rules, pinned paths, generated files and their `regen_cmds` |
 | `sync.sh` | local start: clone/fetch, merge, worktree, agent brief and batches |
 | `finish.sh` | local finish: commit, audit, invariants, push, PR and audit comment |
+| `ci-errors.sh` | error lines of the failing CI jobs on a PR (instead of whole logs) |
 | `ci.sh` | the same flow for GitHub Actions (`sync` and `pr` modes) |
 | `RESOLVE-BRIEF.md` | template for the per-sync agent brief that `sync.sh` writes |
 | `AGENT-GUIDE.md` | the procedure for people and agents, and why hand-merging fails |
