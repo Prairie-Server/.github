@@ -93,6 +93,16 @@ If search returns 0 results, proceed as a fresh session.
 
 After /clear or /compact: knowledge base and session stats preserved. Use `ctx purge` to start fresh.
 
+## Prairie only — NEVER write to Silo-Server
+
+Silo-Server is a read-only upstream. Never open or comment on PRs/issues, push, or call write APIs
+against any `Silo-Server/*` repo without the user's explicit approval in the conversation.
+`gh pr create` in a fork defaults to the Silo **parent** (that is how Silo-Server/silo-apple#751 was
+opened), so every `gh pr create` / `gh issue create` passes `--repo Prairie-Server/<repo>` explicitly.
+Local clones have `gh repo set-default` → Prairie and a disabled `upstream` push URL; a Claude Code
+hook (`~/.claude/hooks/guard-silo-writes.mjs`) and Kilo `permission.bash` rules prompt on violations.
+Do not work around them.
+
 ## Context budget — MANDATORY
 
 Cost is context size × turns, not output. In the 30 days to 2026-10-12, one session that bundled

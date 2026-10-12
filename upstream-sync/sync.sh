@@ -36,6 +36,9 @@ if [ ! -d "$clone/.git" ]; then
 fi
 cd "$clone"
 git remote get-url upstream >/dev/null 2>&1 || git remote add upstream "https://github.com/$upstream"
+# Prairie-only: gh resolves to origin (not the Silo parent) and pushes to upstream are impossible.
+git config remote.origin.gh-resolved base
+git remote set-url --push upstream DISABLED-prairie-only-no-push-to-silo
 git fetch --quiet origin
 git fetch --quiet upstream
 up_head=$(upstream_head)
