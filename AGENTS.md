@@ -1,6 +1,8 @@
 # context-mode — MANDATORY routing rules
 
-context-mode MCP tools available. Rules protect context window from flooding. One unrouted command dumps 56 KB into context.
+Rules protect context window from flooding. One unrouted command dumps 56 KB into context.
+
+**Only when `context-mode_ctx_*` tools are actually in your tool list** (Kilo loads them via `kilo.json`). Without them (e.g. Claude Code without the plugin), nothing below is blocked: apply the same intent with your own tools — filter in a script and print only the answer, pipe shell output through `grep`/`tail`/`head`, read only the file ranges you need. The **Model routing** and **Context budget** sections apply everywhere.
 
 ## Think in Code — MANDATORY
 
@@ -90,6 +92,19 @@ If search returns 0 results, proceed as a fresh session.
 | `ctx purge` | Call `purge` MCP tool with confirm: true. Warns before wiping knowledge base. |
 
 After /clear or /compact: knowledge base and session stats preserved. Use `ctx purge` to start fresh.
+
+## Context budget — MANDATORY
+
+Cost is context size × turns, not output. In the 30 days to 2026-10-12, one session that bundled
+four repo syncs used 75% of all workspace tokens: 266 calls, up to 418k of context re-sent per call, never compacted.
+
+- **One repo per context.** A request that spans several repos (e.g. "sync apple, android and the SDK") fans
+  out to one subagent per repo (`upstream-sync` agent for syncs). The main session only coordinates and
+  keeps the one-paragraph results.
+- **CI failures:** run `upstream-sync/ci-errors.sh <repo> <pr>` or delegate to the `ci-triage` agent. Never page whole logs into context.
+- **Bound output:** `git diff --stat` before a full diff, `| tail -40` on builds and tests, `Grep`/ranged `Read`
+  instead of whole large files.
+- **Compact at phase boundaries.** Once a fix has landed, its logs and diffs are dead weight: `/compact` (or start a fresh session) before the next phase.
 
 ## Engineering discipline — distilled from ponytail + RALPH
 

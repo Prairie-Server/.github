@@ -5,6 +5,9 @@ SYNC_PY="$TOOL_DIR/prairie_sync.py"
 
 die() { echo "error: $*" >&2; exit 1; }
 
+# Windows Git Bash has no python3 (or only the Store stub); fall back to the py launcher.
+if ! python3 -c '' 2>/dev/null && command -v py >/dev/null; then python3() { py -3 "$@"; }; fi
+
 # rules_for <fork-name>: rules/<name minus prairie->.json, else default.json
 rules_for() {
   local r="${1#prairie-}.json"
