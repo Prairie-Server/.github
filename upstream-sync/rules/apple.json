@@ -1,0 +1,49 @@
+{
+  "pre": [],
+  "protect": [
+    "Silo Media,? L\\.?L\\.?C\\.?",
+    "x-silo-[a-z][a-z0-9-]*",
+    "Silo-Server/AetherEngine"
+  ],
+  "content": [
+    [
+      "SILO",
+      "PRAIRIE"
+    ],
+    [
+      "Silo",
+      "Prairie"
+    ],
+    [
+      "silo",
+      "prairie"
+    ]
+  ],
+  "path_keep": [],
+  "skip_content": [
+    "*.xcassets/*",
+    "*.pbxproj.lock"
+  ],
+  "format": [],
+  "ours": [
+    ".github/workflows/*",
+    ".github/ISSUE_TEMPLATE/*",
+    ".github/PULL_REQUEST_TEMPLATE.md",
+    "CONTRIBUTING.md",
+    "README.md",
+    "TRADEMARK.md"
+  ],
+  "regen": [],
+  "drop": [],
+  "protect_tokens": [
+    "SiloASSFixture",
+    "SiloASSFixture.ttf",
+    "SiloObjectAudio",
+    "silo-apple-deploy",
+    "silo-build-ios",
+    "silo-diagnostics",
+    "silo.uiCustomization.server.profile.mobile",
+    "silo.uiCustomization.server.profile.tv",
+    "x-silo-original"
+  ]
+}

@@ -1,0 +1,110 @@
+# Upstream sync for every Prairie-Server fork of Silo, from one place.
+#
+# Daily: each fork gets a rebrand-aware merge of its upstream. A clean merge becomes a PR
+# (sync/upstream-auto); real conflicts become a "Upstream sync needs conflict resolution" issue
+# with the exact local commands. If a sync PR is already open, the job tends it instead:
+# regenerates generated files (rules' regen_cmds), pushes them, and refreshes the audit comment.
+# Every 3 hours only that tending runs, so PRs that people push to get re-audited.
+#
+# Needs the org secret SYNC_TOKEN: a fine-grained PAT (or app token) for the Prairie-Server org
+# with Contents, Pull requests and Issues read/write on all repos. GITHUB_TOKEN can't push to
+# other repos, and its pushes wouldn't trigger the forks' CI anyway.
+name: upstream-sync-all
+
+on:
+  schedule:
+    - cron: "17 9 * * *"      # full sync
+    - cron: "47 */3 * * *"    # tend open sync PRs only
+  workflow_dispatch:
+    inputs:
+      repos:
+        description: "Space-separated fork names (default: every Prairie-Server fork)"
+        type: string
+        default: ""
+      prs-only:
+        description: "Only tend open sync PRs (regen + audit); don't start new syncs"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-sync-all
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - id: m
+        env:
+          GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
+          REPOS: ${{ inputs.repos }}
+        run: |
+          set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::Org secret SYNC_TOKEN is not set (see the header of this workflow)."; exit 1
+          fi
+          gh repo list Prairie-Server --fork --no-archived --limit 200 --json name,parent \
+            --jq '[.[] | select(.parent != null) | {repo: .name, upstream: (.parent.owner.login + "/" + .parent.name)}]' > forks.json
+          if [ -n "$REPOS" ]; then
+            jq --arg r "$REPOS" '[.[] | select(.repo as $n | ($r | split(" ") | index($n)))]' forks.json > f && mv f forks.json
+          fi
+          echo "matrix=$(jq -c . forks.json)" >> "$GITHUB_OUTPUT"
+          jq -r '.[] | "- \(.repo) <- \(.upstream)"' forks.json >> "$GITHUB_STEP_SUMMARY"
+
+  sync:
+    needs: discover
+    if: needs.discover.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include: ${{ fromJson(needs.discover.outputs.matrix) }}
+    name: ${{ matrix.repo }}
+    env:
+      GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: tool
+          sparse-checkout: upstream-sync
+      - uses: actions/checkout@v4
+        with:
+          repository: Prairie-Server/${{ matrix.repo }}
+          path: fork
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_TOKEN }}
+      - if: hashFiles('fork/go.mod') != ''
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: fork/go.mod
+          cache: false
+      - if: hashFiles('fork/go.mod') == ''
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+      - if: hashFiles('fork/package.json', 'fork/web/package.json') != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Sync
+        working-directory: fork
+        env:
+          MODE: ${{ (github.event.schedule == '47 */3 * * *' || inputs.prs-only) && 'prs' || 'sync' }}
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = prs ]; then
+            source ../tool/upstream-sync/common.sh
+            pr=$(open_sync_pr "Prairie-Server/${{ matrix.repo }}")
+            [ -n "$pr" ] || { echo "no open sync PR"; exit 0; }
+            ../tool/upstream-sync/ci.sh pr "Prairie-Server/${{ matrix.repo }}" "${{ matrix.upstream }}" "$pr"
+          else
+            ../tool/upstream-sync/ci.sh sync "Prairie-Server/${{ matrix.repo }}" "${{ matrix.upstream }}"
+          fi

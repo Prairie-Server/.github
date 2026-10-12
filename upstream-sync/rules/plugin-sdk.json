@@ -1,0 +1,54 @@
+{
+  "pre": [],
+  "protect": [
+    "Silo Media,? L\\.?L\\.?C\\.?",
+    "x-silo-[a-z][a-z0-9-]*"
+  ],
+  "content": [
+    [
+      "github\\.com/Silo-Server/silo-",
+      "github.com/prairie-server/prairie-"
+    ],
+    [
+      "SILO",
+      "PRAIRIE"
+    ],
+    [
+      "Silo",
+      "Prairie"
+    ],
+    [
+      "silo",
+      "prairie"
+    ]
+  ],
+  "path_keep": [],
+  "skip_content": [],
+  "format": [
+    [
+      "*.go",
+      [
+        "gofmt",
+        "-w"
+      ]
+    ]
+  ],
+  "ours": [
+    ".github/workflows/*",
+    ".github/ISSUE_TEMPLATE/*",
+    ".github/PULL_REQUEST_TEMPLATE.md",
+    "CONTRIBUTING.md",
+    "README.md",
+    "TRADEMARK.md"
+  ],
+  "regen": [
+    "*.pb.go",
+    "go.sum"
+  ],
+  "drop": [],
+  "regen_cmds": [
+    "command -v protoc >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq protobuf-compiler)",
+    "make proto",
+    "go mod tidy"
+  ]
+}

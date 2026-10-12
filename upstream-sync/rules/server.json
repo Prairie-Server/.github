@@ -1,0 +1,169 @@
+{
+  "pre": [
+    [
+      "github\\.com/Silo-Server/silo-server",
+      "github.com/prairie-server/prairie-server"
+    ],
+    [
+      "github\\.com/Silo-Server/silo-plugin-sdk",
+      "github.com/prairie-server/prairie-plugin-sdk"
+    ]
+  ],
+  "protect": [
+    "x-silo-[a-z][a-z0-9-]*",
+    "silo-audiobooks",
+    "Silo Media,? L\\.?L\\.?C\\.?"
+  ],
+  "content": [
+    [
+      "SILO",
+      "PRAIRIE"
+    ],
+    [
+      "Silo",
+      "Prairie"
+    ],
+    [
+      "silo",
+      "prairie"
+    ]
+  ],
+  "skip_content": [
+    "migrations/sql/*",
+    "go.sum",
+    "web/pnpm-lock.yaml"
+  ],
+  "ours": [
+    ".github/workflows/*",
+    ".github/ISSUE_TEMPLATE/*",
+    ".github/PULL_REQUEST_TEMPLATE.md",
+    "CONTRIBUTING.md",
+    "README.md",
+    "TRADEMARK.md",
+    ".github/CODEOWNERS",
+    ".github/FUNDING.yml"
+  ],
+  "drop": [],
+  "protect_tokens": [
+    "siloserver.org",
+    "siloserver",
+    "silo.example.test",
+    "silo.example",
+    "silo_profile_id",
+    "silo_user_id",
+    "silo-android",
+    "silo-apple",
+    "siloignore",
+    "silo.service",
+    "silo-transcode",
+    "SiloAPI.swift",
+    "silo-download-artifacts",
+    "silo.dev",
+    "silo.tail1234.ts.net",
+    "silo-server.dev",
+    "SiloSeekReanchor",
+    "Silo.Example.Test",
+    "silo.overlay.example.test",
+    "silo-fixture-boundary",
+    "siloItemToLibraryItem",
+    "silo-scenario-executor",
+    "n--silo-fixture-boundary",
+    "silo_postgres_pool_connections",
+    "silo.stub.test",
+    "silo.test",
+    "siloItemToMetadata",
+    "SiloPlayerFactory.kt",
+    "silo_plugin_access",
+    "silo-art",
+    "silo_rename_content_id",
+    "m.silo_user_id",
+    "silo.test.resident",
+    "silo.mdblist",
+    "silo_playback_first_frame_seconds",
+    "source.SiloSeekReanchor",
+    "plugin.silo.alpha.submitted",
+    "Silo-facing",
+    "silo_subprocess_exits_total",
+    "scoreTieEpsilon",
+    "SILO.EXAMPLE.TEST",
+    "siloItemToLibraryItemDetail",
+    "siloNorm",
+    "m.silo_profile_id",
+    "silo.watchParty.recentRooms.v1",
+    "SiloAPI",
+    "silo-dev-transcode-ns17",
+    "silo.manga-metadata",
+    "silo-proxy-02",
+    "siloIgnoreFileName",
+    "silo.delta",
+    "silo-themes",
+    "silo_work_attempts_total",
+    "siloFolderPaths",
+    "silo.admin.advanced.playback.transcoding",
+    "SiloWebTheme",
+    "__SILO_WEB_VERSION__",
+    "silo_dependency_operations_total",
+    "silo_work_active",
+    "silo_jellycompat_request_duration_seconds",
+    "silo.local",
+    "cmdSiloDir",
+    "siloSegs",
+    "SILO-TEST",
+    "silo-plugin-metadata-tmdb",
+    "SiloClientName",
+    "silo.yaml",
+    "siloItemToSmartcollItem",
+    "silo-private",
+    "silo_bench",
+    "silo_query",
+    "silo_log_writer_dropped_total",
+    "Number.EPSILON",
+    "silo_queue_items",
+    "siloSeen",
+    "silomail.ErrNotConfigured",
+    "silo-plugin-metadata-mdblist",
+    "silo.alpha",
+    "org.siloserver.silo.model.settings",
+    "silomail.Message",
+    "silo-ui-text-scale",
+    "hasSiloIgnore",
+    "silo-transcode-recovered",
+    "silo_log_tail_publish_dropped_total",
+    "silo-name",
+    "siloFilesToAudioTracks",
+    "input.silo_user_id",
+    "silo-sha256",
+    "silo_playback_routing_decisions_total",
+    "silomail",
+    "siloClient",
+    "evidence.siloserver.org"
+  ],
+  "path_keep": [
+    "migrations/*",
+    "deploy/observability/silo.rules*",
+    "docs/silo-to-prairie-migration.md",
+    "scripts/silo-profile"
+  ],
+  "format": [
+    [
+      "*.go",
+      [
+        "gofmt",
+        "-w"
+      ]
+    ]
+  ],
+  "regen": [
+    "contracts/api/v2/route-inventory.json",
+    "web/src/api/v2/schema.ts",
+    "web/pnpm-lock.yaml",
+    "go.sum"
+  ],
+  "regen_cmds": [
+    "go mod tidy",
+    "make route-inventory",
+    "make apiv2-openapi",
+    "make apiv2-fixtures",
+    "cd web && pnpm install --no-frozen-lockfile && pnpm run generate:apiv2"
+  ]
+}

@@ -1,0 +1,52 @@
+# Reusable audit for upstream sync PRs (head branch sync/*), as a status check on the fork's
+# PR. It fails on leftover conflict markers and writes the full audit (likely compile breaks,
+# lost Prairie lines, new Silo tokens) to the job summary. upstream-sync-all.yml also posts the
+# same audit as a PR comment every few hours; this gives it to you on every push instead.
+name: upstream-sync-audit
+
+on:
+  workflow_call:
+    inputs:
+      upstream:
+        type: string
+        required: true
+      tool-ref:
+        type: string
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    if: startsWith(github.head_ref, 'sync/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/checkout@v4
+        with:
+          repository: Prairie-Server/.github
+          ref: ${{ inputs.tool-ref }}
+          path: .prairie-sync-tool
+          sparse-checkout: upstream-sync
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+      - name: Audit
+        run: |
+          set -uo pipefail
+          source .prairie-sync-tool/upstream-sync/common.sh
+          git remote add upstream "https://github.com/${{ inputs.upstream }}.git"
+          git fetch --quiet upstream
+          merged_up=$(git merge-base HEAD "$(upstream_head)")
+          rules=$(rules_for "${GITHUB_REPOSITORY#*/}")
+          python3 "$SYNC_PY" --rules "$rules" --ours "origin/${{ github.base_ref }}" --upstream "$merged_up" \
+            audit --result HEAD > "$RUNNER_TEMP/audit.json"
+          rc=$?
+          python3 "$SYNC_PY" render audit "$RUNNER_TEMP/audit.json" >> "$GITHUB_STEP_SUMMARY"
+          exit $rc

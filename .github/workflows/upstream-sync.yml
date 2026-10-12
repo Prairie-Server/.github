@@ -1,0 +1,53 @@
+# Reusable single-fork upstream sync. Most forks don't need this: upstream-sync-all.yml in this
+# repo covers every Prairie-Server fork centrally. Use it when a fork wants its own schedule or
+# runs outside the org (see upstream-sync/caller-example.yml).
+name: upstream-sync
+
+on:
+  workflow_call:
+    inputs:
+      upstream:
+        description: "owner/repo of the Silo upstream, e.g. Silo-Server/silo-server"
+        type: string
+        required: true
+      tool-ref:
+        type: string
+        default: main
+    secrets:
+      SYNC_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-sync-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_TOKEN }}
+      - uses: actions/checkout@v4
+        with:
+          repository: Prairie-Server/.github
+          ref: ${{ inputs.tool-ref }}
+          path: .prairie-sync-tool
+          sparse-checkout: upstream-sync
+      - if: hashFiles('go.mod') != ''
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - if: hashFiles('package.json', 'web/package.json') != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: .prairie-sync-tool/upstream-sync/ci.sh sync "$GITHUB_REPOSITORY" "${{ inputs.upstream }}"

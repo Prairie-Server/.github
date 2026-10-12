@@ -110,3 +110,13 @@ Laziest solution that actually works. Stop at the first rung that holds: (1) doe
 - Fan out with bounded iterations and explicit completion criteria; one task per Agent Manager session/worktree. Never unbounded retry loops — always cap.
 - Unrelated bugs found while working on a task: record them, do not fix them mid-task.
 - When you learn new build/test/run commands for a repo, update `prairie-workspace`/AGENTS.md with the commands — commands only, no status prose.
+
+## Upstream syncs (Silo → Prairie) — MANDATORY procedure
+
+Any "sync with upstream", "update from Silo" or "get prairie-X up to date" task follows
+`upstream-sync/AGENT-GUIDE.md` in this repo. Short version: never hand-merge, never merge a
+rebranded copy of upstream, never resolve whole files to one side, never squash. Check first
+for the daily automation's open sync PR or "Upstream sync needs conflict resolution" issue. Then
+`upstream-sync/sync.sh prairie-<repo>`, resolve only the conflicts it leaves (brief + batches
+provided), and `upstream-sync/finish.sh <worktree>` (commit, audit incl. compile-break checks,
+push, PR). Land with a merge commit.

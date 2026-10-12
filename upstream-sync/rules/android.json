@@ -1,0 +1,73 @@
+{
+  "pre": [],
+  "protect": [
+    "Silo Media,? L\\.?L\\.?C\\.?",
+    "x-silo-[a-z][a-z0-9-]*",
+    "secure\\.silo",
+    "silo_(notification|notifications|player_settings|diagnostics)[a-z0-9_]*"
+  ],
+  "content": [
+    [
+      "SILO",
+      "PRAIRIE"
+    ],
+    [
+      "Silo",
+      "Prairie"
+    ],
+    [
+      "silo",
+      "prairie"
+    ]
+  ],
+  "path_keep": [],
+  "skip_content": [
+    "gradle/wrapper/*",
+    "*.lock"
+  ],
+  "format": [],
+  "ours": [
+    ".github/workflows/*",
+    ".github/ISSUE_TEMPLATE/*",
+    ".github/PULL_REQUEST_TEMPLATE.md",
+    "CONTRIBUTING.md",
+    "README.md",
+    "TRADEMARK.md"
+  ],
+  "regen": [],
+  "drop": [],
+  "protect_tokens": [
+    "Silo_Phone",
+    "Silo_TV",
+    "TvSiloWordmark",
+    "_silopair",
+    "isSameSiloHttpOrigin",
+    "latestSiloCastMediaController",
+    "request.attachSiloDeviceMetadataHeaders",
+    "siloBuildNumber",
+    "siloCaption",
+    "siloCastController",
+    "siloCastReceiver",
+    "siloCastStandby",
+    "siloCastState",
+    "siloCastState.hasActiveSession",
+    "siloGlass",
+    "siloHeadline",
+    "siloKeyboardActions",
+    "siloOutline",
+    "siloPIN",
+    "siloReleaseChannel",
+    "siloReleaseChannels",
+    "siloRowTopDivider",
+    "siloSmall",
+    "siloSurfaceVariant",
+    "siloTitle",
+    "siloVersionCode",
+    "siloVersionName",
+    "silocast",
+    "siloplayerloopback",
+    "window.siloLastHl",
+    "window.siloSearch",
+    "x-silo-original"
+  ]
+}
