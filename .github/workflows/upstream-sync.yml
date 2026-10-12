@@ -1,0 +1,172 @@
+# Reusable upstream sync for the Prairie forks of Silo.
+#
+# A fork calls this on a schedule (see upstream-sync/caller-example.yml). Each run:
+#   - up to date              -> nothing
+#   - a sync PR already open  -> leaves it alone, refreshes the "upstream moved" note
+#   - clean rebrand-aware merge -> pushes sync/upstream-auto and opens a PR (CI runs on it)
+#   - conflicts left after auto-resolution -> opens/updates an issue listing them, plus the
+#     exact commands to finish locally. No code is pushed.
+#
+# PRs opened with GITHUB_TOKEN do not trigger CI, so pass SYNC_TOKEN: a fine-grained PAT or
+# app token with Contents, Pull requests and Issues read/write on the fork.
+name: upstream-sync
+
+on:
+  workflow_call:
+    inputs:
+      upstream:
+        description: "owner/repo of the Silo upstream, e.g. Silo-Server/silo-server"
+        type: string
+        required: true
+      rules:
+        description: "rules file name under upstream-sync/rules (default: <repo minus prairie->.json, else default.json)"
+        type: string
+        default: ""
+      go-version:
+        description: "Go version for gofmt (rules with a *.go formatter); empty = latest stable"
+        type: string
+        default: "stable"
+      tool-ref:
+        type: string
+        default: main
+    secrets:
+      SYNC_TOKEN:
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: upstream-sync-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ secrets.SYNC_TOKEN || github.token }}
+      GH_REPO: ${{ github.repository }}
+      BRANCH: sync/upstream-auto
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_TOKEN || github.token }}
+      - uses: actions/checkout@v4
+        with:
+          repository: Prairie-Server/.github
+          ref: ${{ inputs.tool-ref }}
+          path: .prairie-sync-tool
+          sparse-checkout: upstream-sync
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache: false
+      - name: Merge upstream (rebrand-aware)
+        id: merge
+        run: |
+          set -euo pipefail
+          git config user.name "prairie-sync[bot]"
+          git config user.email "prairie-sync@users.noreply.github.com"
+          git remote add upstream "https://github.com/${{ inputs.upstream }}.git"
+          git fetch --quiet upstream
+          up_head=$(git symbolic-ref --short refs/remotes/upstream/HEAD 2>/dev/null || echo upstream/main)
+          rules="${{ inputs.rules }}"
+          if [ -z "$rules" ]; then
+            rules="${GITHUB_REPOSITORY#*/}"; rules="${rules#prairie-}.json"
+            [ -f ".prairie-sync-tool/upstream-sync/rules/$rules" ] || rules=default.json
+          fi
+          echo "rules=$rules upstream=$up_head"
+          python3 .prairie-sync-tool/upstream-sync/prairie_sync.py \
+            --rules ".prairie-sync-tool/upstream-sync/rules/$rules" \
+            --ours origin/main --upstream "$up_head" \
+            merge --branch "$BRANCH" --upstream-name "${{ inputs.upstream }}" \
+            > "$RUNNER_TEMP/result.json"
+          python3 - "$RUNNER_TEMP/result.json" >> "$GITHUB_OUTPUT" <<'EOF'
+          import json, sys
+          d = json.load(open(sys.argv[1]))
+          print(f"status={d['status']}")
+          print(f"commits={d.get('upstream_commits', 0)}")
+          print(f"upstream={d.get('upstream', '')}")
+          print(f"conflicts={len(d.get('conflicts', []))}")
+          EOF
+          cat "$RUNNER_TEMP/result.json"
+
+      - name: Existing sync PR?
+        id: existing
+        if: steps.merge.outputs.status != 'up-to-date'
+        run: |
+          n=$(gh pr list --state open --json number,headRefName --jq '[.[]|select(.headRefName|startswith("sync/"))][0].number // empty')
+          echo "pr=$n" >> "$GITHUB_OUTPUT"
+
+      - name: Note on the open sync PR
+        if: steps.existing.outputs.pr != ''
+        run: |
+          gh pr comment "${{ steps.existing.outputs.pr }}" --edit-last --body "Upstream is now at ${{ steps.merge.outputs.upstream }} (${{ steps.merge.outputs.commits }} commits past main's merge-base). Land this PR first; the next scheduled run picks up the rest." \
+          || gh pr comment "${{ steps.existing.outputs.pr }}" --body "Upstream is now at ${{ steps.merge.outputs.upstream }} (${{ steps.merge.outputs.commits }} commits past main's merge-base). Land this PR first; the next scheduled run picks up the rest."
+
+      - name: Open PR (clean merge)
+        if: steps.merge.outputs.status == 'clean' && steps.existing.outputs.pr == ''
+        run: |
+          set -euo pipefail
+          git push --force origin "$BRANCH"
+          python3 - "$RUNNER_TEMP/result.json" > "$RUNNER_TEMP/body.md" <<'EOF'
+          import json, sys
+          d = json.load(open(sys.argv[1]))
+          a = d.get("autoresolved", {})
+          print(f"Automated rebrand-aware merge of `{d['upstream'][:10]}` ({d['upstream_commits']} upstream commits).\n")
+          print("**Land with \"Create a merge commit\". Never squash:** the second parent is the real upstream commit, and that is what keeps the next sync small.\n")
+          lst = lambda k: "".join(f"\n- `{x}`" for x in a.get(k, []))
+          print(f"Auto-resolved: {a.get('files_fully_resolved', 0)} files "
+                f"(theirs {a.get('theirs', 0)}, ours {a.get('ours', 0)}, same {a.get('same', 0)}, "
+                f"superset {a.get('superset', 0)}, import-union {a.get('import-union', 0)}, "
+                f"delete-over-noise {a.get('delete_wins_over_noise', 0)}).")
+          if a.get("regen_taken_from_upstream"):
+              print("\n**Regenerate these generated files** (taken from upstream):" + lst("regen_taken_from_upstream"))
+          if a.get("upstream_deleted_prairie_modified"):
+              print("\n**Upstream deleted files Prairie had modified.** Check that Prairie's change isn't a feature that needs re-homing:" + lst("upstream_deleted_prairie_modified"))
+          print("\nCI must be green, including `Prairie invariants`. A failing test after a sync usually means a Prairie hunk was lost, not that the test is stale.")
+          EOF
+          gh pr create --base main --head "$BRANCH" --label upstream-sync \
+            --title "Sync upstream ${{ inputs.upstream }} (${{ steps.merge.outputs.commits }} commits)" \
+            --body-file "$RUNNER_TEMP/body.md" \
+          || gh pr create --base main --head "$BRANCH" \
+            --title "Sync upstream ${{ inputs.upstream }} (${{ steps.merge.outputs.commits }} commits)" \
+            --body-file "$RUNNER_TEMP/body.md"
+
+      - name: Issue (conflicts need a human or agent)
+        if: steps.merge.outputs.status == 'conflicts' && steps.existing.outputs.pr == ''
+        run: |
+          set -euo pipefail
+          python3 - "$RUNNER_TEMP/result.json" "${{ inputs.upstream }}" "${GITHUB_REPOSITORY}" > "$RUNNER_TEMP/issue.md" <<'EOF'
+          import json, sys
+          d, up, repo = json.load(open(sys.argv[1])), sys.argv[2], sys.argv[3]
+          name = repo.split("/")[1]
+          a = d.get("autoresolved", {})
+          print(f"Upstream `{up}` is {d['upstream_commits']} commits ahead (`{d['upstream'][:10]}`). "
+                f"The rebrand-aware merge auto-resolved {a.get('files_fully_resolved', 0)} files, "
+                f"but **{len(d['conflicts'])} files still have real conflicts**.\n")
+          print("## Finish it locally\n")
+          print("```sh")
+          print(f"git clone https://github.com/{repo} && cd {name}")
+          print(f"git remote add upstream https://github.com/{up} && git fetch upstream")
+          print("git clone --depth 1 https://github.com/Prairie-Server/.github ../prairie-dotgithub")
+          print(f"python3 ../prairie-dotgithub/upstream-sync/prairie_sync.py --rules ../prairie-dotgithub/upstream-sync/rules/<rules>.json \\")
+          print(f"  merge --branch sync/upstream-$(date +%F) --worktree ../{name}-sync")
+          print("```\n")
+          print("Then follow `upstream-sync/AGENT-GUIDE.md` in Prairie-Server/.github: resolve only the files below, `git commit` (MERGE_HEAD is already set), run `audit`, push, and open a PR.\n")
+          print("## Conflicted files\n")
+          for c in d["conflicts"]:
+              print(f"- `{c}`")
+          if a.get("upstream_deleted_prairie_modified"):
+              print("\n## Upstream deleted files Prairie had modified (delete was applied; check for features to re-home)\n")
+              for c in a["upstream_deleted_prairie_modified"]:
+                  print(f"- `{c}`")
+          EOF
+          title="Upstream sync needs conflict resolution"
+          n=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$n" ]; then gh issue edit "$n" --body-file "$RUNNER_TEMP/issue.md"
+          else gh issue create --title "$title" --body-file "$RUNNER_TEMP/issue.md"; fi
