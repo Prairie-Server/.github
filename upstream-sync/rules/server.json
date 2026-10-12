@@ -71,6 +71,7 @@
     "silo_postgres_pool_connections",
     "silo.stub.test",
     "silo.test",
+    "Silo.Test",
     "siloItemToMetadata",
     "SiloPlayerFactory.kt",
     "silo_plugin_access",

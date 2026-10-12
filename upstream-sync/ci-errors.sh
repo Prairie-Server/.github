@@ -16,8 +16,10 @@ for run in $runs; do
     [ "$status" = completed ] || { pending=$((pending + 1)); continue; }
     [ "$concl" = failure ] || continue
     echo; echo "=== $name (job $id)"
-    gh api "repos/$repo/actions/jobs/$id/logs" 2>/dev/null \
-      | sed -E 's/^[0-9T:.-]+Z //' \
+    # Newer gh refuses (silently, with 2>/dev/null) to print logs that carry
+    # terminal escapes; allow them and strip the colour codes here.
+    gh api --allow-escape-sequences "repos/$repo/actions/jobs/$id/logs" 2>/dev/null \
+      | sed -E 's/\x1b\[[0-9;]*m//g; s/^[0-9T:.-]+Z //' \
       | grep -E "error:|##\[error\]|FAILED|^e: |undefined: |panic:|^--- FAIL|^FAIL\b|ERR_PNPM|AssertionError|Expected|✗|×|not enough arguments|cannot use|Unresolved reference" \
       | grep -vE "^(SwiftCompile|SwiftDriver|\s+builtin-|\s+/Applications/)|^\S*\[36;1m| WARN |Problems API|lint-baseline|Process completed with exit code|if-no-files-found|google-cloud-errors" \
       | awk '!seen[$0]++' | head -n "$max" | cut -c1-300
