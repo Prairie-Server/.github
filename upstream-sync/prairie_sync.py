@@ -499,9 +499,10 @@ LOOSE_RE = {e: rs + [re.compile(r"\b(?:let|var|val|const)\s+([A-Za-z_]\w*)"),
                      re.compile(r"\bcase\s+([A-Za-z_]\w*)"),
                      re.compile(r"\b(?:function|fun|func)\s+([A-Za-z_]\w*)"),
                      # params, named args, struct/interface/object fields: `name: Type`
-                     re.compile(r"\b([A-Za-z_]\w*)\??\s*:\s*[A-Za-z_(\[{@'\"]"),
-                     re.compile(r"^\s+([A-Za-z_]\w*)\??\s*\(", re.M)]   # TS/Kotlin methods
+                     re.compile(r"\b([A-Za-z_]\w*)\??\s*:\s*[A-Za-z_(\[{@'\"]")]
             for e, rs in DECL_RE.items()}
+for _e in (".ts", ".tsx"):   # TS method definitions `name(args) {` / `name(args): T` (not calls)
+    LOOSE_RE[_e] = LOOSE_RE[_e] + [re.compile(r"^\s+(?:async\s+)?([A-Za-z_]\w*)\??\s*\([^)]*\)\s*[:{]", re.M)]
 LOOSE_RE[".go"] = LOOSE_RE[".go"] + [
     re.compile(r"(?:^|[\s(,])([A-Za-z_]\w*)(?:\s*,\s*[A-Za-z_]\w*)*\s*:=", re.M),        # x := / x, y :=
     re.compile(r",\s*([A-Za-z_]\w*)(?:\s*,\s*[A-Za-z_]\w*)*\s*:="),
@@ -598,7 +599,7 @@ def duplicate_decls(cat, res_t, changed, skip):
         for i, line in enumerate(cat.get(res_t[p][1]).decode(errors="replace").splitlines(), 1):
             code = STRIP_RE.sub("", line)
             in_params = parens > 0   # constructor/function parameters, not members
-            if re.match(r"\s*#(?:else|elseif)\b", line):
+            if re.match(r"\s*#(?:if|else|elseif)\b", line):
                 seen = {}   # Swift conditional compilation: each branch may declare the same name
             m = MEMBER_RE[ext].match(line)
             if m and depth == 1 and not in_params and not COMMENT_RE.match(line) and not re.search(r"\b(?:class|object|interface|struct)\b.*\(", line):
