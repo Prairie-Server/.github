@@ -104,6 +104,27 @@ that the test is stale. Don't edit `scripts/prairie-invariants.txt` to make it p
 - For CI failures, run `upstream-sync/ci-errors.sh prairie-<repo> <pr>`. It prints only the error
   lines of the failing jobs on the PR's current head. Don't read whole logs.
 
+### Repo-specific hand-resolution notes
+
+- Always pass `--repo Prairie-Server/<repo>` to `gh`; otherwise it can resolve to the Silo upstream.
+- **Workflow YAML, Fastfile, project.yml:** never union. When upstream refactored the structure
+  (e.g. a `ci:` job delegating to a shared workflow, helpers, directory inclusion), adopt upstream's
+  form and re-add Prairie-only jobs/entries (ffmpeg-aar, prairie-invariants, release-readiness). Watch
+  for mangled control characters (em-dash → 0x14) that YAML parsers and xcodebuild reject.
+- **prairie-apple `project.yml`** lists sources explicitly. New upstream Swift files need a `- path:`
+  entry next to their siblings, or the build fails with "cannot find X in scope".
+- **prairie-apple `Package.resolved`:** take upstream's raw bytes; its pins must match the merged
+  `project.yml` package config.
+- **prairie-apple test-selector gates** must be re-sealed in the sync PR:
+  `scripts/ci/apple-test-source-ownership.json` must list the merged tree's
+  `iosApp/Tests/**/*.swift`; update `TEST_SOURCE_OWNERSHIP_SHA256` and the count in
+  `scripts/ci/select-apple-platforms.py`; then recompute `controller_sha256` in
+  `scripts/ci/apple-test-selector-contract.json` (sha256 of
+  `json.dumps({path: {mode, sha256}}, sort_keys=True, separators=(",", ":"))` over the three
+  SELECTOR_FILES).
+- Some brand strings intentionally stay Silo on both sides (Android release titles, "Releasing Silo …"
+  messages) — match what main and upstream actually have.
+
 ## Rules hygiene
 
 When `audit` reports Silo tokens the rules should have caught, or noise conflicts the tool
