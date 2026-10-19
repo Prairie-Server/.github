@@ -1,4 +1,7 @@
 """Unit tests for the audit's compile-break checks. Run: python3 -m unittest test_prairie_sync"""
+import json
+import os
+import tempfile
 import unittest
 
 import prairie_sync as ps
@@ -56,6 +59,18 @@ class DanglingSymbols(unittest.TestCase):
         cat.files["b.go"] = ("package a\n\ntype hooks struct {\n\thelper func()\n}\n\n"
                              "// helper used to exist\nfunc f(h hooks) { h.helper() }\n")
         self.assertEqual({}, ps.dangling_symbols(cat, ours, {}, res, never))
+
+
+class ProtectTokens(unittest.TestCase):
+    def test_prefix_token_ending_in_punctuation_protects_keys(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+            json.dump({"content": [["silo", "prairie"]], "protect_tokens": ["silo.admin.advanced.", "siloserver"]}, f)
+        try:
+            rb = ps.Rebrander(f.name)
+        finally:
+            os.remove(f.name)
+        self.assertEqual(b'k = "silo.admin.advanced.playback"; siloserver; prairie.x; prairieservers',
+                         rb.text(b'k = "silo.admin.advanced.playback"; siloserver; silo.x; siloservers'))
 
 
 if __name__ == "__main__":
