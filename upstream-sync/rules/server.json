@@ -47,6 +47,7 @@
   "protect_tokens": [
     "siloserver.org",
     "siloserver",
+    "silo.admin.advanced.",
     "silo.example.test",
     "silo.example",
     "silo_profile_id",

@@ -60,8 +60,11 @@ class Rebrander:
         self.pre = [(re.compile(a.encode()), b.encode()) for a, b in r.get("pre", [])]
         self.content = [(re.compile(a.encode()), b.encode()) for a, b in r.get("content", [])]
         # Literal tokens the fork deliberately kept (from `learn`), matched as whole tokens.
+        # A token ending in punctuation (e.g. "silo.admin.advanced.") is a prefix: no boundary there.
+        word = lambda c: c.isalnum() or c == "_"
         for t in r.get("protect_tokens", []):
-            self.protect.append(re.compile(rb"(?<![A-Za-z0-9_])" + re.escape(t.encode()) + rb"(?![A-Za-z0-9_])"))
+            self.protect.append(re.compile((rb"(?<![A-Za-z0-9_])" if word(t[0]) else b"") + re.escape(t.encode())
+                                           + (rb"(?![A-Za-z0-9_])" if word(t[-1]) else b"")))
         self.paths = [(re.compile(a), b) for a, b in r.get("paths", [])]
         # Paths are rebranded with the same content rules, except these globs
         # (e.g. migrations, whose file names are recorded in the database).
@@ -464,9 +467,10 @@ def cmd_merge(a):
             git("read-tree", "--reset", "-u", tree, cwd=wt)
             gd = git("rev-parse", "--git-dir", cwd=wt).stdout.decode().strip()
             gd = gd if os.path.isabs(gd) else os.path.join(wt, gd)
-            with open(os.path.join(gd, "MERGE_HEAD"), "w") as f:
+            # newline="\n": Windows text mode would write \r\n, and git rejects that MERGE_HEAD as corrupt.
+            with open(os.path.join(gd, "MERGE_HEAD"), "w", newline="\n") as f:
                 f.write(up + "\n")
-            with open(os.path.join(gd, "MERGE_MSG"), "w") as f:
+            with open(os.path.join(gd, "MERGE_MSG"), "w", encoding="utf-8", newline="\n") as f:
                 f.write(msg + "\nConflicts resolved by hand:\n" + "".join(f"\t{c}\n" for c in conflicts))
             summary["worktree"] = wt
     print(json.dumps(summary, indent=2))
@@ -758,7 +762,8 @@ def cmd_render(a):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sys.stdout.reconfigure(encoding="utf-8")   # render prints ❌/…; Windows defaults to cp1252
+    ap =argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--rules", default=".github/prairie-sync/rules.json")
     ap.add_argument("--ours", default="origin/main")
     ap.add_argument("--upstream", default="upstream/main")

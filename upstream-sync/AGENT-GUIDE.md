@@ -38,7 +38,9 @@ $T/finish.sh ~/prairie-sync/prairie-<repo>-sync   # commit, audit, invariants, p
 **Before you start, check for automation output.** `upstream-sync-all.yml` runs every day for
 every fork. A clean merge already arrives as a PR (`sync/upstream-auto`). Conflicts arrive as an
 issue, **"Upstream sync needs conflict resolution"**, listing the files. Start from that issue,
-and don't open a second sync PR while one is open.
+and don't open a second sync PR while one is open. If the `sync/upstream-auto` PR is open,
+`finish.sh` pushes your merge to that branch (`--force-with-lease`) and updates that PR instead of
+opening another.
 
 ### What `sync.sh` gives you
 
@@ -70,6 +72,9 @@ Hunks are diff3 style: `<<<<<<< origin/main` (Prairie) / `||||||| refs/prairie-s
 - `upstream_deleted_prairie_modified`: upstream removed or moved these files and the delete was
   applied. Check Prairie's diff; if it was a feature, re-home it in upstream's replacement.
 - Don't rebase, cherry-pick or squash the merge.
+- **Staged is not resolved.** `sync.sh` stages the merged tree with its markers, so
+  `git ls-files -u` can be empty while files still conflict. Verify with
+  `git grep -lE '^(<<<<<<<|\|\|\|\|\|\|\||>>>>>>>)( |$)'` (`finish.sh` runs the same check).
 
 ### Verify, then push: `finish.sh`
 
@@ -101,6 +106,11 @@ that the test is stale. Don't edit `scripts/prairie-invariants.txt` to make it p
   targeted checks: gofmt, invariants, `finish.sh --no-push`, single-package tests.
 - Fix all audit findings in one pass before pushing. Each CI round on prairie-apple costs about
   12 minutes.
+- **Windows hosts (Git Bash):** `sync.sh` sets `core.autocrlf=false` and `core.eol=lf` on the sync
+  clone, because CRLF checkouts break `MERGE_HEAD`, the invariants list and gofmt. Without `python3`
+  the scripts use the `py` launcher; with neither, install Python 3. Rules with a gofmt formatter
+  (all Go repos) need `gofmt` on PATH (`winget install GoLang.Go`, or run the sync in WSL). Don't
+  drop the formatter from the rules to get past it: unformatted rebrands turn into noise conflicts.
 - For CI failures, run `upstream-sync/ci-errors.sh prairie-<repo> <pr>`. It prints only the error
   lines of the failing jobs on the PR's current head. Don't read whole logs.
 
@@ -122,6 +132,17 @@ that the test is stale. Don't edit `scripts/prairie-invariants.txt` to make it p
   `scripts/ci/apple-test-selector-contract.json` (sha256 of
   `json.dumps({path: {mode, sha256}}, sort_keys=True, separators=(",", ":"))` over the three
   SELECTOR_FILES).
+- **prairie-apple `PrairieNetworkingHost`** (a Prairie-only CI target in `iosApp/project.yml`) lists
+  its sources by hand. Each sync, add any new upstream file that the Networking code now depends on.
+- **Go plugin repos (`prairie-plugins`, `prairie-plugin-*`) `go.mod`:** keep Prairie's pinned
+  `github.com/prairie-server/prairie-plugin-sdk` require line. The rebranded upstream line carries a
+  Silo SDK version or pseudo-version that doesn't exist in prairie-plugin-sdk. The rules can't pin a
+  single line (only whole files via `ours`), so check it by hand. `go.sum` is regenerated (`go mod
+  tidy`); don't hand-merge it.
+- **Scripts upstream deleted that Prairie's workflows still call** (e.g. `scripts/ci/resolve-platform.sh`):
+  workflows are `ours`, so they survive while the script goes. `finish.sh` lists workflow references
+  to files present on Prairie `main` but gone after the merge and stops the push. Restore the script
+  or port the workflow.
 - Some brand strings intentionally stay Silo on both sides (Android release titles, "Releasing Silo …"
   messages) — match what main and upstream actually have.
 
