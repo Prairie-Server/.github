@@ -25,7 +25,10 @@ upstream, without hand-merging thousands of rebranded files.
     posts the audit comment.
   - Conflicts: opens or updates the issue **"Upstream sync needs conflict resolution"**, with the
     file list and the `sync.sh`/`finish.sh` commands.
-  - A sync PR is already open: tends it (regen and audit) instead of starting another.
+  - A sync PR is already open: merges newer upstream commits into its branch (when that's clean;
+    otherwise a sticky PR comment lists the conflicts), then tends it (regen and audit) instead of
+    starting another. Land open sync PRs promptly: while one is open, conflicting upstream work waits.
+  - Issues disabled on the fork: conflicts fail the job with the file list in the job summary.
 - **Every 3 hours:** tends open sync PRs only, so people's pushes get re-audited and regenerated.
 - **Manual:** *Run workflow*, optionally with specific repos or PR-tending only.
 
