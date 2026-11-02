@@ -473,12 +473,13 @@ def cmd_merge(a):
             git("worktree", "add", "-f", "-B", a.branch, wt, ours)
             # Real in-progress merge: index/worktree = merged tree (with markers),
             # MERGE_HEAD = real upstream, so a plain `git commit` records both parents.
+            # LF only: on Windows, text mode writes CRLF and git calls MERGE_HEAD corrupt.
             git("read-tree", "--reset", "-u", tree, cwd=wt)
             gd = git("rev-parse", "--git-dir", cwd=wt).stdout.decode().strip()
             gd = gd if os.path.isabs(gd) else os.path.join(wt, gd)
-            with open(os.path.join(gd, "MERGE_HEAD"), "w") as f:
+            with open(os.path.join(gd, "MERGE_HEAD"), "w", newline="\n") as f:
                 f.write(up + "\n")
-            with open(os.path.join(gd, "MERGE_MSG"), "w") as f:
+            with open(os.path.join(gd, "MERGE_MSG"), "w", newline="\n") as f:
                 f.write(msg + "\nConflicts resolved by hand:\n" + "".join(f"\t{c}\n" for c in conflicts))
             summary["worktree"] = wt
     print(json.dumps(summary, indent=2))
