@@ -78,6 +78,15 @@ class Rebrander:
         # Generated files: on conflict take upstream's version and regenerate afterwards.
         self.regen = r.get("regen", [])
 
+    def map_go_module(self, ours, upstream):
+        """Forks renamed on top of the rebrand (silo-plugin-tmdb -> prairie-plugin-metadata-tmdb)
+        get upstream's Go module path mapped to Prairie's exactly, ahead of the generic rules;
+        otherwise every upstream import change conflicts with Prairie's import line."""
+        mod = lambda ref: re.search(rb"^module\s+(\S+)", git("show", f"{ref}:go.mod", check=False).stdout, re.M)
+        o, u = mod(ours), mod(upstream)
+        if o and u and self.text(u.group(1)) != o.group(1):
+            self.pre.insert(0, (re.compile(re.escape(u.group(1)) + rb"(?![\w.-])"), o.group(1)))
+
     def path(self, p):
         if not any(fnmatch.fnmatch(p, g) for g in self.path_keep):
             p = self.text(p.encode(errors="surrogateescape")).decode(errors="surrogateescape")
@@ -233,6 +242,7 @@ def tree_map(commit):
 
 def cmd_calibrate(a):
     rb = Rebrander(a.rules)
+    rb.map_go_module(a.ours, a.upstream)
     ours, up = rev(a.ours), rev(a.upstream)
     base = git("merge-base", ours, up).stdout.decode().strip()
     cat = Cat()
@@ -271,6 +281,7 @@ def cmd_learn(a):
     """Per-token: did the fork keep or rename it? Suggest protect entries."""
     import difflib
     rb = Rebrander(a.rules)
+    rb.map_go_module(a.ours, a.upstream)
     ours, up = rev(a.ours), rev(a.upstream)
     base = git("merge-base", ours, up).stdout.decode().strip()
     cat = Cat()
@@ -427,6 +438,7 @@ def autoresolve_tree(rb, cat, tree, conflicts, theirs, base=None, ours=None):
 
 def cmd_merge(a):
     rb = Rebrander(a.rules)
+    rb.map_go_module(a.ours, a.upstream)
     ours, up = rev(a.ours), rev(a.upstream)
     if git("merge-base", "--is-ancestor", up, ours, check=False).returncode == 0:
         print(json.dumps({"status": "up-to-date"}))
@@ -633,6 +645,7 @@ def added_lines(a, b, path):
 
 def cmd_audit(a):
     rb = Rebrander(a.rules)
+    rb.map_go_module(a.ours, a.upstream)
     ours, up, res = rev(a.ours), rev(a.upstream), rev(a.result)
     base = git("merge-base", ours, up).stdout.decode().strip()
     cat = Cat()
