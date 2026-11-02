@@ -42,6 +42,15 @@ class DuplicateDecls(unittest.TestCase):
         t, cat = tree({"V.swift": swift, "R.kt": kt})
         self.assertEqual({}, ps.duplicate_decls(cat, t, ["V.swift", "R.kt"], never))
 
+    def test_kotlin_extension_properties_and_swift_static_twins(self):
+        kt = ("class Reg {\n    private val Item.removable: Boolean\n        get() = true\n"
+              "    private val Item.unqueued: Boolean\n        get() = removable\n    val id: String = \"\"\n}\n")
+        swift = "struct S {\n    static let key = \"k\"\n    let key: String\n}\n"
+        t, cat = tree({"Reg.kt": kt, "S.swift": swift})
+        self.assertEqual({}, ps.duplicate_decls(cat, t, ["Reg.kt", "S.swift"], never))
+        t, cat = tree({"D.kt": "class D {\n    val id = 1\n    val id = 2\n}\n"})
+        self.assertIn("D.kt: id", ps.duplicate_decls(cat, t, ["D.kt"], never))
+
 
 class DanglingSymbols(unittest.TestCase):
     def test_type_removed_upstream_but_still_used(self):

@@ -484,7 +484,8 @@ DECL_RE = {
                re.compile(r"^ {0,8}(?:(?:public|private|internal|fileprivate|static|nonisolated|lazy|weak|override|final|@\w+(?:\([^)]*\))?)\s+)*(?:let|var)\s+([A-Za-z_]\w*)", re.M)],
     ".kt": [re.compile(r"\b(?:class|interface|object|typealias)\s+([A-Za-z_]\w*)"),
             re.compile(r"\bfun\s+(?:<[^>]*>\s*)?(?:[\w.<>?, ]+\.)?([A-Za-z_]\w*)\s*\("),
-            re.compile(r"^ {0,8}(?:(?:public|private|internal|protected|override|const|lateinit|open|@\w+)\s+)*(?:val|var)\s+([A-Za-z_]\w*)", re.M)],
+            # group 1: an extension property's receiver (`val Foo.bar`), group 2: the name
+            re.compile(r"^ {0,8}(?:(?:public|private|internal|protected|override|const|lateinit|open|@\w+)\s+)*(?:val|var)\s+(?:<[^>]*>\s*)?(?:([\w.<>?]+)\.)?([A-Za-z_]\w*)", re.M)],
     ".ts": [re.compile(r"\bexport\s+(?:default\s+)?(?:declare\s+)?(?:async\s+)?(?:function\*?|class|interface|type|const|let|enum)\s+([A-Za-z_$][\w$]*)")],
 }
 DECL_RE[".kts"] = DECL_RE[".kt"]
@@ -532,7 +533,7 @@ def declared(cat, files, table=None):
     for p, o in files.items():
         txt = cat.get(o).decode(errors="replace")
         for rx in table[os.path.splitext(p)[1]]:
-            names.update(rx.findall(txt))
+            names.update(m[-1] if isinstance(m, tuple) else m for m in rx.findall(txt))
         if p.endswith(".go"):
             for blk in GO_BLOCK_RE.findall(txt):
                 names.update(re.findall(r"^\t([A-Za-z_]\w*)\b", blk, re.M))
@@ -603,7 +604,11 @@ def duplicate_decls(cat, res_t, changed, skip):
                 seen = {}   # Swift conditional compilation: each branch may declare the same name
             m = MEMBER_RE[ext].match(line)
             if m and depth == 1 and not in_params and not COMMENT_RE.match(line) and not re.search(r"\b(?:class|object|interface|struct)\b.*\(", line):
-                n = m.group(1)
+                *receiver, n = m.groups()
+                if any(receiver):
+                    continue   # Kotlin extension property: not stored, and receivers differ
+                if re.match(r"\s*(?:\S+\s+)*?(?:static|class)\s+(?:let|var)\b", code):
+                    n = "static " + n   # Swift: a static and an instance property may share a name
                 if n in seen:
                     out[f"{p}: {n}"] = [f"{p}:{seen[n]}", f"{p}:{i}"]
                 seen[n] = i
