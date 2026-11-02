@@ -84,16 +84,14 @@ cs = d["conflicts"]
 n = 0
 for i in range(0, len(cs), batch):
     n += 1
-    open(os.path.join(bd, f"{n:02d}.txt"), "w", newline="
-").write("\n".join(cs[i:i + batch]) + "\n")
+    open(os.path.join(bd, f"{n:02d}.txt"), "w", newline="\n").write("\n".join(cs[i:i + batch]) + "\n")
 brief = open(os.path.join(tool, "RESOLVE-BRIEF.md")).read()
 for k, v in {"FORK": fork, "UPSTREAM_REPO": upstream, "WORKTREE": wt, "BASE": d["rebranded_base"],
              "OURS": d["ours"], "THEIRS": d["rebranded_upstream"], "RAW_BASE": d["base"],
              "RAW_UPSTREAM": d["upstream"], "N": str(d["upstream_commits"]), "BATCH_DIR": bd}.items():
     brief = brief.replace("{{" + k + "}}", v)
 bp = os.path.join(workdir, f"{fork}-RESOLVE-BRIEF.md")
-open(bp, "w", encoding="utf-8", newline="
-").write(brief)
+open(bp, "w", encoding="utf-8", newline="\n").write(brief)
 print(f"\nWorktree with the in-progress merge: {wt}")
 print(f"Agent brief: {bp}")
 print(f"Batches ({n}): {bd}/NN.txt  (one agent per batch; they only edit + git add their files)")
