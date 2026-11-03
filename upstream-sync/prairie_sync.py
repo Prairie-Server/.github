@@ -78,6 +78,15 @@ class Rebrander:
         # Generated files: on conflict take upstream's version and regenerate afterwards.
         self.regen = r.get("regen", [])
 
+    def map_go_module(self, ours, upstream):
+        """Forks renamed on top of the rebrand (silo-plugin-tmdb -> prairie-plugin-metadata-tmdb)
+        get upstream's Go module path mapped to Prairie's exactly, ahead of the generic rules;
+        otherwise every upstream import change conflicts with Prairie's import line."""
+        mod = lambda ref: re.search(rb"^module\s+(\S+)", git("show", f"{ref}:go.mod", check=False).stdout, re.M)
+        o, u = mod(ours), mod(upstream)
+        if o and u and self.text(u.group(1)) != o.group(1):
+            self.pre.insert(0, (re.compile(re.escape(u.group(1)) + rb"(?![\w.-])"), o.group(1)))
+
     def path(self, p):
         if not any(fnmatch.fnmatch(p, g) for g in self.path_keep):
             p = self.text(p.encode(errors="surrogateescape")).decode(errors="surrogateescape")
@@ -233,6 +242,7 @@ def tree_map(commit):
 
 def cmd_calibrate(a):
     rb = Rebrander(a.rules)
+    rb.map_go_module(a.ours, a.upstream)
     ours, up = rev(a.ours), rev(a.upstream)
     base = git("merge-base", ours, up).stdout.decode().strip()
     cat = Cat()
@@ -271,6 +281,7 @@ def cmd_learn(a):
     """Per-token: did the fork keep or rename it? Suggest protect entries."""
     import difflib
     rb = Rebrander(a.rules)
+    rb.map_go_module(a.ours, a.upstream)
     ours, up = rev(a.ours), rev(a.upstream)
     base = git("merge-base", ours, up).stdout.decode().strip()
     cat = Cat()
@@ -427,6 +438,7 @@ def autoresolve_tree(rb, cat, tree, conflicts, theirs, base=None, ours=None):
 
 def cmd_merge(a):
     rb = Rebrander(a.rules)
+    rb.map_go_module(a.ours, a.upstream)
     ours, up = rev(a.ours), rev(a.upstream)
     if git("merge-base", "--is-ancestor", up, ours, check=False).returncode == 0:
         print(json.dumps({"status": "up-to-date"}))
@@ -461,12 +473,13 @@ def cmd_merge(a):
             git("worktree", "add", "-f", "-B", a.branch, wt, ours)
             # Real in-progress merge: index/worktree = merged tree (with markers),
             # MERGE_HEAD = real upstream, so a plain `git commit` records both parents.
+            # LF only: on Windows, text mode writes CRLF and git calls MERGE_HEAD corrupt.
             git("read-tree", "--reset", "-u", tree, cwd=wt)
             gd = git("rev-parse", "--git-dir", cwd=wt).stdout.decode().strip()
             gd = gd if os.path.isabs(gd) else os.path.join(wt, gd)
-            with open(os.path.join(gd, "MERGE_HEAD"), "w") as f:
+            with open(os.path.join(gd, "MERGE_HEAD"), "w", newline="\n") as f:
                 f.write(up + "\n")
-            with open(os.path.join(gd, "MERGE_MSG"), "w") as f:
+            with open(os.path.join(gd, "MERGE_MSG"), "w", newline="\n") as f:
                 f.write(msg + "\nConflicts resolved by hand:\n" + "".join(f"\t{c}\n" for c in conflicts))
             summary["worktree"] = wt
     print(json.dumps(summary, indent=2))
@@ -484,7 +497,8 @@ DECL_RE = {
                re.compile(r"^ {0,8}(?:(?:public|private|internal|fileprivate|static|nonisolated|lazy|weak|override|final|@\w+(?:\([^)]*\))?)\s+)*(?:let|var)\s+([A-Za-z_]\w*)", re.M)],
     ".kt": [re.compile(r"\b(?:class|interface|object|typealias)\s+([A-Za-z_]\w*)"),
             re.compile(r"\bfun\s+(?:<[^>]*>\s*)?(?:[\w.<>?, ]+\.)?([A-Za-z_]\w*)\s*\("),
-            re.compile(r"^ {0,8}(?:(?:public|private|internal|protected|override|const|lateinit|open|@\w+)\s+)*(?:val|var)\s+([A-Za-z_]\w*)", re.M)],
+            # group 1: an extension property's receiver (`val Foo.bar`), group 2: the name
+            re.compile(r"^ {0,8}(?:(?:public|private|internal|protected|override|const|lateinit|open|@\w+)\s+)*(?:val|var)\s+(?:<[^>]*>\s*)?(?:([\w.<>?]+)\.)?([A-Za-z_]\w*)", re.M)],
     ".ts": [re.compile(r"\bexport\s+(?:default\s+)?(?:declare\s+)?(?:async\s+)?(?:function\*?|class|interface|type|const|let|enum)\s+([A-Za-z_$][\w$]*)")],
 }
 DECL_RE[".kts"] = DECL_RE[".kt"]
@@ -532,7 +546,7 @@ def declared(cat, files, table=None):
     for p, o in files.items():
         txt = cat.get(o).decode(errors="replace")
         for rx in table[os.path.splitext(p)[1]]:
-            names.update(rx.findall(txt))
+            names.update(m[-1] if isinstance(m, tuple) else m for m in rx.findall(txt))
         if p.endswith(".go"):
             for blk in GO_BLOCK_RE.findall(txt):
                 names.update(re.findall(r"^\t([A-Za-z_]\w*)\b", blk, re.M))
@@ -603,7 +617,11 @@ def duplicate_decls(cat, res_t, changed, skip):
                 seen = {}   # Swift conditional compilation: each branch may declare the same name
             m = MEMBER_RE[ext].match(line)
             if m and depth == 1 and not in_params and not COMMENT_RE.match(line) and not re.search(r"\b(?:class|object|interface|struct)\b.*\(", line):
-                n = m.group(1)
+                *receiver, n = m.groups()
+                if any(receiver):
+                    continue   # Kotlin extension property: not stored, and receivers differ
+                if re.match(r"\s*(?:\S+\s+)*?(?:static|class)\s+(?:let|var)\b", code):
+                    n = "static " + n   # Swift: a static and an instance property may share a name
                 if n in seen:
                     out[f"{p}: {n}"] = [f"{p}:{seen[n]}", f"{p}:{i}"]
                 seen[n] = i
@@ -628,6 +646,7 @@ def added_lines(a, b, path):
 
 def cmd_audit(a):
     rb = Rebrander(a.rules)
+    rb.map_go_module(a.ours, a.upstream)
     ours, up, res = rev(a.ours), rev(a.upstream), rev(a.result)
     base = git("merge-base", ours, up).stdout.decode().strip()
     cat = Cat()
