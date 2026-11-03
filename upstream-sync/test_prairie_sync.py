@@ -1,4 +1,5 @@
 """Unit tests for the audit's compile-break checks. Run: python3 -m unittest test_prairie_sync"""
+import os
 import unittest
 
 import prairie_sync as ps
@@ -65,6 +66,29 @@ class DanglingSymbols(unittest.TestCase):
         cat.files["b.go"] = ("package a\n\ntype hooks struct {\n\thelper func()\n}\n\n"
                              "// helper used to exist\nfunc f(h hooks) { h.helper() }\n")
         self.assertEqual({}, ps.dangling_symbols(cat, ours, {}, res, never))
+
+
+class ServerRebrand(unittest.TestCase):
+    """Strings the server kept as silo (or renamed differently) must survive the rebrand."""
+
+    rb = ps.Rebrander(os.path.join(os.path.dirname(os.path.abspath(__file__)), "rules", "server.json"))
+
+    def check(self, upstream, want):
+        self.assertEqual(want, self.rb.text(upstream.encode()).decode())
+
+    def test_kept_identifiers(self):
+        self.check('"urn:silo:request:" + id', '"urn:silo:request:" + id')
+        self.check('"SUBSCRIBE silo:admin@db3 silo:transcode-move@db3"', '"SUBSCRIBE silo:admin@db3 prairie:transcode-move@db3"')
+        self.check('"-NOPERM User silo has no permissions"', '"-NOPERM User silo has no permissions"')
+        self.check('r.Header.Get("X-Amz-Meta-Silo-Sha256")', 'r.Header.Get("X-Amz-Meta-Silo-Sha256")')
+        self.check('{"HTTPS", "Silo.Example.TEST:443"}', '{"HTTPS", "Silo.Example.TEST:443"}')
+
+    def test_renamed_where_prairie_renamed(self):
+        self.check('"apns_topic":"org.siloserver.silo"', '"apns_topic":"org.prairieserver.prairie"')
+        self.check(r'{\"apns_topic\": \"org.siloserver.silo\"}', r'{\"apns_topic\": \"org.prairieserver.prairie\"}')
+        self.check('"org.siloserver.silo:/auth/callback"', '"org.siloserver.prairie:/auth/callback"')
+        self.check("`silo:admin` and silo:events:ws-ticket:", "`prairie:admin` and prairie:events:ws-ticket:")
+        self.check("uri=https%3A%2F%2Fsilo.example.test", "uri=https%3A%2F%2Fprairie.example.test")
 
 
 if __name__ == "__main__":
