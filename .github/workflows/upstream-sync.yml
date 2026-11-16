@@ -31,11 +31,11 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           token: ${{ secrets.SYNC_TOKEN }}
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: Prairie-Server/.github
           ref: ${{ inputs.tool-ref }}
