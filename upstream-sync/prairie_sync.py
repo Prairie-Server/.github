@@ -60,8 +60,11 @@ class Rebrander:
         self.pre = [(re.compile(a.encode()), b.encode()) for a, b in r.get("pre", [])]
         self.content = [(re.compile(a.encode()), b.encode()) for a, b in r.get("content", [])]
         # Literal tokens the fork deliberately kept (from `learn`), matched as whole tokens.
+        # A token ending in punctuation (e.g. "silo.admin.advanced.") is a prefix: no boundary there.
+        word = lambda c: c.isalnum() or c == "_"
         for t in r.get("protect_tokens", []):
-            self.protect.append(re.compile(rb"(?<![A-Za-z0-9_])" + re.escape(t.encode()) + rb"(?![A-Za-z0-9_])"))
+            self.protect.append(re.compile((rb"(?<![A-Za-z0-9_])" if word(t[0]) else b"") + re.escape(t.encode())
+                                           + (rb"(?![A-Za-z0-9_])" if word(t[-1]) else b"")))
         self.paths = [(re.compile(a), b) for a, b in r.get("paths", [])]
         # Paths are rebranded with the same content rules, except these globs
         # (e.g. migrations, whose file names are recorded in the database).
@@ -352,7 +355,40 @@ def resolve_hunk(o, b, t):
                     seen.add(l.strip())
                     out.append(l)
             return out, "import-union"
+    bumped = resolve_version_bump(o, b, t)
+    if bumped is not None:
+        return bumped, "version-max"
     return None, None
+
+
+VERSION_RE = re.compile(rb"(?<![\w.])v?\d+(?:\.\d+){1,3}(?![\w.])")
+VERSION_KEY = re.compile(rb"(?i)version\w*[\"']?\s*[:=]")   # "version": / versionName = / VERSION =
+
+
+def _version_key(tok):
+    return [int(x) for x in tok.lstrip(b"v").split(b".")]
+
+
+def resolve_version_bump(o, b, t):
+    """Both sides bumped the same version field (plugin manifest, package.json, versionName):
+    keep the higher version. Only lines that name a version key qualify, so dependency pins
+    (go.mod requires, lockfiles) still go to a human."""
+    if not o or not t or VERSION_RE.sub(b"@", b"".join(o)) != VERSION_RE.sub(b"@", b"".join(b)) \
+            or VERSION_RE.sub(b"@", b"".join(t)) != VERSION_RE.sub(b"@", b"".join(b)):
+        return None
+    if any(VERSION_RE.search(l) and (len(VERSION_RE.findall(l)) > 1 or not VERSION_KEY.search(l)) for l in o):
+        return None
+    to, tt = VERSION_RE.findall(b"".join(o)), VERSION_RE.findall(b"".join(t))
+    if not to or len(to) != len(tt) or to == tt:
+        return None
+
+    def higher(a, c):
+        ka, kc = _version_key(a), _version_key(c)
+        n = max(len(ka), len(kc))
+        return a if ka + [0] * (n - len(ka)) >= kc + [0] * (n - len(kc)) else c
+
+    picks = iter([higher(a, c) for a, c in zip(to, tt)])
+    return [VERSION_RE.sub(lambda m: next(picks), l) for l in o]
 
 
 def autoresolve(data):
@@ -477,9 +513,10 @@ def cmd_merge(a):
             git("read-tree", "--reset", "-u", tree, cwd=wt)
             gd = git("rev-parse", "--git-dir", cwd=wt).stdout.decode().strip()
             gd = gd if os.path.isabs(gd) else os.path.join(wt, gd)
+            # newline="\n": Windows text mode would write \r\n, and git rejects that MERGE_HEAD as corrupt.
             with open(os.path.join(gd, "MERGE_HEAD"), "w", newline="\n") as f:
                 f.write(up + "\n")
-            with open(os.path.join(gd, "MERGE_MSG"), "w", newline="\n") as f:
+            with open(os.path.join(gd, "MERGE_MSG"), "w", encoding="utf-8", newline="\n") as f:
                 f.write(msg + "\nConflicts resolved by hand:\n" + "".join(f"\t{c}\n" for c in conflicts))
             summary["worktree"] = wt
     print(json.dumps(summary, indent=2))
@@ -710,7 +747,7 @@ def cmd_render(a):
         au = d.get("autoresolved", {})
         stats = (f"{au.get('files_fully_resolved', 0)} files auto-resolved (hunks: theirs {au.get('theirs', 0)}, "
                  f"ours {au.get('ours', 0)}, same {au.get('same', 0)}, superset {au.get('superset', 0)}, "
-                 f"import-union {au.get('import-union', 0)}; delete-over-noise {au.get('delete_wins_over_noise', 0)})")
+                 f"import-union {au.get('import-union', 0)}, version-max {au.get('version-max', 0)}; delete-over-noise {au.get('delete_wins_over_noise', 0)})")
     if a.kind == "pr":
         w(f"Rebrand-aware merge of `{up}` at `{d['upstream'][:10]}` ({d['upstream_commits']} upstream commits).\n")
         w("**Land with \"Create a merge commit\". Never squash.** The second parent is the real upstream commit; "
@@ -777,7 +814,8 @@ def cmd_render(a):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sys.stdout.reconfigure(encoding="utf-8")   # render prints ❌/…; Windows defaults to cp1252
+    ap =argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--rules", default=".github/prairie-sync/rules.json")
     ap.add_argument("--ours", default="origin/main")
     ap.add_argument("--upstream", default="upstream/main")

@@ -32,9 +32,13 @@ need_go_if_formatting "$rules"
 
 [ -e "$wt" ] && die "$wt exists. Finish it (finish.sh) or remove it: git -C $clone worktree remove --force $wt"
 if [ ! -d "$clone/.git" ]; then
-  git clone --quiet "https://github.com/$ORG/$fork" "$clone"
+  git clone --quiet -c core.autocrlf=false -c core.eol=lf "https://github.com/$ORG/$fork" "$clone"
 fi
 cd "$clone"
+# LF checkouts on Windows too (worktrees share this config): CRLF breaks MERGE_HEAD, the
+# invariants list and gofmt.
+git config core.autocrlf false
+git config core.eol lf
 git remote get-url upstream >/dev/null 2>&1 || git remote add upstream "https://github.com/$upstream"
 # Prairie-only: gh resolves to origin (not the Silo parent) and pushes to upstream are impossible.
 git config remote.origin.gh-resolved base

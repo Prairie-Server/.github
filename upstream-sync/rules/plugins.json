@@ -48,6 +48,7 @@
   ],
   "drop": [],
   "regen_cmds": [
-    "[ ! -f go.mod ] || go mod tidy"
+    "[ ! -f go.mod ] || go mod tidy",
+    "[ ! -f go.mod ] || git diff -z --name-only --diff-filter=AM origin/main...HEAD -- '*.go' | grep -zv '[.]pb[.]go$' | xargs -0r go run golang.org/x/tools/cmd/goimports@v0.38.0 -format-only -local \"$(go list -m)\" -w"
   ]
 }

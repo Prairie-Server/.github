@@ -7,6 +7,8 @@ die() { echo "error: $*" >&2; exit 1; }
 
 # Windows Git Bash has no python3 (or only the Store stub); fall back to the py launcher.
 if ! python3 -c '' 2>/dev/null && command -v py >/dev/null; then python3() { py -3 "$@"; }; fi
+# UTF-8 stdio and open() for every python3 here (Windows defaults to cp1252).
+export PYTHONUTF8=1
 
 # rules_for <fork-name>: rules/<name minus prairie->.json, else default.json
 rules_for() {
