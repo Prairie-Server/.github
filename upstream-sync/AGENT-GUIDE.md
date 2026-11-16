@@ -54,7 +54,9 @@ opening another.
 
 The tool rebrands the merge-base and upstream with the repo's rules, merges against Prairie
 `main`, and auto-resolves every hunk where one side only changed brand words, whitespace,
-formatting or imports. What's left is real overlap, usually 5–10% of the naive conflict count.
+formatting or imports, and keeps the higher version where both sides only bumped a version
+field (plugin `manifest.json`, `"version"`/`versionName` lines; dependency pins are left to you).
+What's left is real overlap, usually 5–10% of the naive conflict count.
 
 ### Resolve the remaining hunks
 

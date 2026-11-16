@@ -105,5 +105,42 @@ class ServerRebrand(unittest.TestCase):
         self.check("uri=https%3A%2F%2Fsilo.example.test", "uri=https%3A%2F%2Fprairie.example.test")
 
 
+class VersionBump(unittest.TestCase):
+    """Both sides bumped a plugin manifest's version: keep the higher one."""
+
+    def resolve(self, o, b, t):
+        return ps.resolve_hunk([o.encode()], [b.encode()], [t.encode()])
+
+    def test_upstream_higher(self):
+        self.assertEqual(([b'  "version": "0.3.2",\n'], "version-max"),
+                         self.resolve('  "version": "0.3.1",\n', '  "version": "0.3.0",\n', '  "version": "0.3.2",\n'))
+
+    def test_prairie_higher_compares_numerically(self):
+        self.assertEqual(([b'  "version": "1.10.0",\n'], "version-max"),
+                         self.resolve('  "version": "1.10.0",\n', '  "version": "1.8.0",\n', '  "version": "1.9.9",\n'))
+
+    def test_v_prefix_kept(self):
+        self.assertEqual(([b'VERSION = "v1.3.0"\n'], "version-max"),
+                         self.resolve('VERSION = "v1.2.4"\n', 'VERSION = "v1.2.3"\n', 'VERSION = "v1.3.0"\n'))
+
+    def test_other_text_changed_needs_a_human(self):
+        self.assertEqual((None, None), self.resolve('  "version": "0.3.1", "a": 1\n', '  "version": "0.3.0", "a": 0\n',
+                                                    '  "version": "0.3.2", "a": 2\n'))
+
+    def test_dependency_pins_need_a_human(self):
+        self.assertEqual((None, None), self.resolve("\tgoogle.golang.org/grpc v1.70.0\n", "\tgoogle.golang.org/grpc v1.68.0\n",
+                                                    "\tgoogle.golang.org/grpc v1.71.1\n"))
+
+    def test_line_with_two_version_tokens_needs_a_human(self):
+        self.assertEqual((None, None), self.resolve('version = "1.2.4" # since 1.0.0\n', 'version = "1.2.3" # since 1.0.0\n',
+                                                    'version = "1.3.0" # since 1.0.1\n'))
+
+    def test_autoresolve_counts_it(self):
+        data = (b'{\n<<<<<<< a\n  "version": "1.2.23",\n||||||| b\n  "version": "1.2.21",\n=======\n'
+                b'  "version": "1.2.30",\n>>>>>>> c\n}\n')
+        out, left, stats = ps.autoresolve(data)
+        self.assertEqual((b'{\n  "version": "1.2.30",\n}\n', 0, {"version-max": 1}), (out, left, stats))
+
+
 if __name__ == "__main__":
     unittest.main()

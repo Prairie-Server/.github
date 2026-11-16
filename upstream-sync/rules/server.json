@@ -175,6 +175,7 @@
     "make route-inventory",
     "make apiv2-openapi",
     "make apiv2-fixtures",
-    "cd web && pnpm install --no-frozen-lockfile && pnpm run generate:apiv2"
+    "cd web && pnpm install --no-frozen-lockfile && pnpm run generate:apiv2",
+    "[ ! -f go.mod ] || git diff -z --name-only --diff-filter=AM origin/main...HEAD -- '*.go' | grep -zv '[.]pb[.]go$' | xargs -0r go run golang.org/x/tools/cmd/goimports@v0.38.0 -format-only -local \"$(go list -m)\" -w"
   ]
 }

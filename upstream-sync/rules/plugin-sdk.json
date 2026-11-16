@@ -49,6 +49,7 @@
   "regen_cmds": [
     "command -v protoc >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq protobuf-compiler)",
     "make proto",
-    "go mod tidy"
+    "go mod tidy",
+    "[ ! -f go.mod ] || git diff -z --name-only --diff-filter=AM origin/main...HEAD -- '*.go' | grep -zv '[.]pb[.]go$' | xargs -0r go run golang.org/x/tools/cmd/goimports@v0.38.0 -format-only -local \"$(go list -m)\" -w"
   ]
 }
