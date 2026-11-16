@@ -557,8 +557,11 @@ for _e in (".ts", ".tsx"):   # TS method definitions `name(args) {` / `name(args
 LOOSE_RE[".go"] = LOOSE_RE[".go"] + [
     re.compile(r"(?:^|[\s(,])([A-Za-z_]\w*)(?:\s*,\s*[A-Za-z_]\w*)*\s*:=", re.M),        # x := / x, y :=
     re.compile(r",\s*([A-Za-z_]\w*)(?:\s*,\s*[A-Za-z_]\w*)*\s*:="),
-    re.compile(r"[(,]\s*([A-Za-z_]\w*)\s+(?:\.\.\.)?[*\[\]\w.]+\s*[,)]"),             # params
-    re.compile(r"^\s+([A-Za-z_]\w*)\s+[*\[\]\w.{}]+(?:\s+`[^`]*`)?\s*(?://.*)?$", re.M),  # struct fields
+    # params, including name lists `(a, b string)`: each name sees the type via lookahead
+    re.compile(r"[(,]\s*([A-Za-z_]\w*)(?=(?:\s*,\s*[A-Za-z_]\w*)*\s+(?:\.\.\.)?[*\[\]\w.]+\s*[,)])"),
+    # struct fields, including name lists `a, b, c string`
+    re.compile(r"(?:^[ \t]+|,[ \t]*)([A-Za-z_]\w*)(?=(?:[ \t]*,[ \t]*[A-Za-z_]\w*)*[ \t]+[*\[\]\w.{}]+"
+               r"(?:[ \t]+`[^`]*`)?[ \t]*(?://.*)?$)", re.M),
     re.compile(r"\bfor\s+([A-Za-z_]\w*)(?:\s*,\s*[A-Za-z_]\w*)?\s*:?=\s*range"),
     re.compile(r"^\s+([A-Za-z_]\w*):\s*$", re.M),                                       # labels
     re.compile(r"^\s+([A-Za-z_]\w*)\s+(?:func|chan|map|interface|struct)\b", re.M),        # func-typed fields

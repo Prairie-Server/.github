@@ -69,6 +69,14 @@ class DanglingSymbols(unittest.TestCase):
                              "// helper used to exist\nfunc f(h hooks) { h.helper() }\n")
         self.assertEqual({}, ps.dangling_symbols(cat, ours, {}, res, never))
 
+    def test_go_field_and_param_name_lists_declare_every_name(self):
+        ours, cat = tree({"a.go": "package a\n\nfunc matchCode() {}\nfunc userCode() {}\nfunc limit() {}\n"})
+        res = {"b.go": ("100644", "b.go")}
+        cat.files["b.go"] = ("package a\n\ntype req struct {\n\tdeviceCode, userCode, matchCode string // codes\n}\n\n"
+                             "func f(offset, limit int) int { return offset + limit }\n"
+                             "func g(r req) string { return r.userCode + r.matchCode }\n")
+        self.assertEqual({}, ps.dangling_symbols(cat, ours, {}, res, never))
+
 
 class ProtectTokens(unittest.TestCase):
     def test_prefix_token_ending_in_punctuation_protects_keys(self):
