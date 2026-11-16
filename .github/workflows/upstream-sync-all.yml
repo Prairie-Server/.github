@@ -2,8 +2,10 @@
 #
 # Daily: each fork gets a rebrand-aware merge of its upstream. A clean merge becomes a PR
 # (sync/upstream-auto); real conflicts become a "Upstream sync needs conflict resolution" issue
-# with the exact local commands. If a sync PR is already open, the job tends it instead:
-# regenerates generated files (rules' regen_cmds), pushes them, and refreshes the audit comment.
+# with the exact local commands (forks with issues disabled fail the job instead). If a sync PR is
+# already open, the job merges newer upstream into its branch when that's clean (else comments the
+# conflicts on the PR), then tends it: regenerates generated files (rules' regen_cmds), pushes
+# them, and refreshes the audit comment.
 # Every 3 hours only that tending runs, so PRs that people push to get re-audited.
 #
 # Needs the org secret SYNC_TOKEN: a fine-grained PAT (or app token) for the Prairie-Server org

@@ -7,12 +7,21 @@
     [
       "github\\.com/Silo-Server/silo-plugin-sdk",
       "github.com/prairie-server/prairie-plugin-sdk"
+    ],
+    [
+      "(apns_topic\\\\?\"\\s*:\\s*\\\\?\")org\\.siloserver\\.silo(?![\\w.-])",
+      "\\1org.prairieserver.prairie"
     ]
   ],
   "protect": [
     "x-silo-[a-z][a-z0-9-]*",
     "silo-audiobooks",
-    "Silo Media,? L\\.?L\\.?C\\.?"
+    "Silo Media,? L\\.?L\\.?C\\.?",
+    "urn:silo:request",
+    "(?<!`)silo:(?:catalog|admin|playback|logs|events)(?![\\w:-])",
+    "NOPERM User silo(?![\\w-])",
+    "(?i:silo-sha256)",
+    "(?<![A-Za-z0-9_])(?i:silo\\.example\\.test)"
   ],
   "content": [
     [
