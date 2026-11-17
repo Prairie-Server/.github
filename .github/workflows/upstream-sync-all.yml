@@ -72,11 +72,11 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: tool
           sparse-checkout: upstream-sync
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: Prairie-Server/${{ matrix.repo }}
           path: fork
