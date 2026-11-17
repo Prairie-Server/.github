@@ -49,5 +49,5 @@ jobs:
       - if: hashFiles('package.json', 'web/package.json') != ''
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "26"
       - run: .prairie-sync-tool/upstream-sync/ci.sh sync "$GITHUB_REPOSITORY" "${{ inputs.upstream }}"
