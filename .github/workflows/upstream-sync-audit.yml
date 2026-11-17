@@ -33,7 +33,7 @@ jobs:
           ref: ${{ inputs.tool-ref }}
           path: .prairie-sync-tool
           sparse-checkout: upstream-sync
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: stable
           cache: false

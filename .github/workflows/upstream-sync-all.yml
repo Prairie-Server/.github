@@ -83,12 +83,12 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.SYNC_TOKEN }}
       - if: hashFiles('fork/go.mod') != ''
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: fork/go.mod
           cache: false
       - if: hashFiles('fork/go.mod') == ''
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version: stable
           cache: false
