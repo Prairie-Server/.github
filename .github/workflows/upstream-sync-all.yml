@@ -93,7 +93,7 @@ jobs:
           go-version: stable
           cache: false
       - if: hashFiles('fork/package.json', 'fork/web/package.json') != ''
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
       - name: Sync
