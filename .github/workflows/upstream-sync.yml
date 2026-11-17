@@ -47,7 +47,7 @@ jobs:
           go-version-file: go.mod
           cache: false
       - if: hashFiles('package.json', 'web/package.json') != ''
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
       - run: .prairie-sync-tool/upstream-sync/ci.sh sync "$GITHUB_REPOSITORY" "${{ inputs.upstream }}"
