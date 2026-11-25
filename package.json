@@ -1,6 +1,6 @@
 {
   "dependencies": {
-    "context-mode": "^1.0.169"
+    "context-mode": "^2.0.0"
   },
   "allowScripts": {
     "context-mode@1.0.169": true,
